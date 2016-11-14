@@ -1,0 +1,5 @@
+Pour exécuter le code :
+ - se rendre dans le dossier build
+ - exécuter la commande make qui doit créer l'exécutable pricer
+ - pour afficher les prix et deltas en 0 avec leur intervalle de confiance, lancer la commande ./pricer ../files/nom_du_fichier
+ - pour afficher l'erreur P&L, lancer : ./pricer -c ../files/nom_du_fichier
