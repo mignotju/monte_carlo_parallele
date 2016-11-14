@@ -73,7 +73,6 @@ void MonteCarlo::price(double &prix, double &ic) {
 
     PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
 
-
     for (int i = 0; i < nbSamples_; i++) {
         pnl_mat_set_all(path, 0);
         mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
