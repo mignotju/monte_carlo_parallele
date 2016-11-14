@@ -19,6 +19,25 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build." FORCE)
 endif ()
 
+# Detect MPI
+set(MPI_LIBS)
+find_package(MPI REQUIRED)
+if (MPI_C_FOUND)
+    include_directories(${MPI_C_INCLUDE_PATH})
+    set (MPI_LIBS ${MPI_LIBS} ${MPI_C_LIBRARIES})
+    add_definitions(-DOMPI_SKIP_MPICXX)
+else (MPI_C_FOUND)
+    message(STATUS "MPI not found.")
+endif (MPI_C_FOUND)
+
+# Detect OMP
+find_package(OpenMP REQUIRED)
+if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS ${CMAKE_C_CFLAGS} ${OpenMP_C_FLAGS})
+    set (CMAKE_CXX_FLAGS ${CMAKE_CXX_CFLAGS} ${OpenMP_CXX_FLAGS})
+else (OPENMP_FOUND)
+    message(STATUS "OpenMP not found.")
+endif (OPENMP_FOUND)
 
 # Detect Boost
 set(Boost_NO_BOOST_CMAKE ON)
