@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     t = clock();
     const char* extension = "-c";
 
-    if (strcmp(argv[1], extension) == 0) {
+    if (argc ==3 && strcmp(argv[1], extension) == 0) {
         char *infile = argv[2];
         Param *P = new Parser(infile);
 
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
         cout << "erreur P&L : " << err << endl;
 
 
-    } else {
+    } else if (argc == 2) {
 
         char *infile = argv[1];
         Param *P = new Parser(infile);
@@ -70,6 +70,10 @@ int main(int argc, char** argv) {
                  ((float)t)/CLOCKS_PER_SEC << " secondes." << endl;
 
 
+    } else {
+    	cout << "Veuillez tapez une des commandes suivantes"
+    			" : ./pricer fichier ou ./pricer -c fichier" << endl;
+    	exit(1);
     }
 
 
