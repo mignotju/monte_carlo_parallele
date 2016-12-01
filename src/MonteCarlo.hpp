@@ -37,14 +37,29 @@ public:
      * \brief Destructeur
      */
     ~MonteCarlo();
-    
-    /**
+
+	/**
      * Calcule le prix de l'option à la date 0
      *
      * @param[out] prix valeur de l'estimateur Monte Carlo
      * @param[out] ic largeur de l'intervalle de confiance
      */
     void price(double &prix, double &ic);
+	
+	/**
+	 * Partie du pricing effectuée par le processus maître
+	 *
+	 * @param[out] prix valeur de l'estimateur Monte Carlo
+     * @param[out] ic largeur de l'intervalle de confiance
+	 */
+	void price_master(double &prix, double &ic);
+
+	/**
+	 * Partie du pricing effectuée par les processus esclaves
+	 *
+	 * @param[in] samples nombre de simulations que doit réaliser ce processus
+	 */
+	void price_slave();
     
     /**
      * Calcule le prix de l'option à la date 0 pour les tests

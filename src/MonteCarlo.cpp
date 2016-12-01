@@ -15,23 +15,40 @@
 #include <stdlib.h>
 #include <stdexcept>
 #include <mpi.h>
+#include <omp.h>
 
 using namespace std;
 
-MonteCarlo::MonteCarlo() {
+MonteCarlo::MonteCarlo()
+{
     fdStep_ = 0.01;
     mod_ = new BlackScholesModel();
     nbSamples_ = 500;
     opt_ = new OptionBasket();
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    int seed = time(NULL);
+
+    int count;
+
+    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
+    if (count != omp_get_num_threads()) {
+      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    }
+    for (int i = 0; i < count; i++) {
+      pnl_rng_sseed(array_rng[i], seed);
+    }
+
+    rng_ = array_rng[omp_get_thread_num()];
+    
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-MonteCarlo::MonteCarlo(Param *P) {
+
+
+MonteCarlo::MonteCarlo(Param *P)
+{
     mod_ = new BlackScholesModel(P);
     P->extract("fd step", fdStep_);
 
@@ -57,42 +74,57 @@ MonteCarlo::MonteCarlo(Param *P) {
         opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
     }
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    int seed = time(NULL);
+
+    int count;
+    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
+    if (count != omp_get_num_threads()) {
+      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    }
+    for (int i = 0; i < count; i++) {
+      pnl_rng_sseed(array_rng[i], seed);
+    }
+
+    rng_ = array_rng[omp_get_thread_num()];
 
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-void MonteCarlo::price(double &prix, double &ic) 
-{
-	int rank, size;
-	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	if (0 == rank)
-	{
-		price_master(prix, ic);
-	}
-	else
-	{
-		//on calcule le nombre de samples par slave
-		int slaves = size - 1;
-		int samples = nbSamples_;
-		if (slaves == rank)
-		{
-			samples += (nbSamples_%slaves);
-		}
 
-		price_slave(samples);
-	}
+void MonteCarlo::price(double &prix, double &ic) {
+    double sum = 0;
+    double tmp = sum;
+    double sum_square = 0;
+    double variance = 0;
+    double payoff = 0;
 
-	MPI_Barrier();
+    PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
+
+
+    for (int i = 0; i < nbSamples_; i++) {
+        pnl_mat_set_all(path, 0);
+        mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
+        payoff = opt_->payoff(path);
+        sum += payoff;
+        sum_square += pow(payoff, 2);
+    }
+
+    pnl_mat_free(&path);
+
+    tmp = sum;
+    variance = getVariance(tmp, sum_square, 0);
+    prix = getPrice(sum, 0);
+    //    std::cout << "VARIANCE : " << variance << std::endl;
+    ic = getIntervalleConfiance(variance);
+
 }
 
 
-void price_master(double &prix, double &ic)
+
+void MonteCarlo::price_master(double &prix, double &ic)
 {
 	int size;
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -115,8 +147,21 @@ void price_master(double &prix, double &ic)
 }
 
 
-void price_slave(const int samples)
+
+void MonteCarlo::price_slave()
 {
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	//on calcule le nombre de samples par slave
+	int slaves = size - 1;
+	int samples = nbSamples_;
+	if (slaves == rank)
+	{
+		samples += (nbSamples_%slaves);
+	}
+
 	double res[2] = {0, 0};
 	double payoff;
 
@@ -136,7 +181,9 @@ void price_slave(const int samples)
 }
 
 
-void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic) {
+
+void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic)
+{
     double sum = 0;
     double tmp = sum;
     double sum_square = 0;
@@ -156,11 +203,13 @@ void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic) {
     tmp = sum;
     variance = getVariance(tmp, sum_square, t);
     prix = getPrice(sum, t);
-    // std::cout << "VARIANCE : " << variance << std::endl;
     ic = getIntervalleConfiance(variance);
 }
 
-void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta) {
+
+
+void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta)
+{
     double h = fdStep_;
     double payoff = 0;
     double prec = 0;
@@ -219,7 +268,10 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta) {
 
 }
 
-MonteCarlo::~MonteCarlo() {
+
+
+MonteCarlo::~MonteCarlo()
+{
     pnl_rng_free(&rng_);
     pnl_mat_free(&shiftMoins_);
     pnl_mat_free(&shiftPlus_);
@@ -228,7 +280,8 @@ MonteCarlo::~MonteCarlo() {
 
 /*  ----------- fonctions auxiliaires de factorisation du code ----------  */
 
-double MonteCarlo::getVariance(double sum, double sum_square, double t) {
+double MonteCarlo::getVariance(double sum, double sum_square, double t)
+{
     sum /= nbSamples_;
     sum = pow(sum, 2);
 
@@ -236,18 +289,25 @@ double MonteCarlo::getVariance(double sum, double sum_square, double t) {
     return exp(-2 * mod_->r_ * (opt_->T_ - t))*(sum_square - sum);
 }
 
-double MonteCarlo::getIntervalleConfiance(double variance) {
+
+
+double MonteCarlo::getIntervalleConfiance(double variance)
+{
     return 2 * 1.96 * sqrt(variance / nbSamples_);
 }
 
-double MonteCarlo::getPrice(double sum, double t) {
+
+
+double MonteCarlo::getPrice(double sum, double t)
+{
     sum *= exp(-mod_->r_ * (opt_->T_ - t)) / nbSamples_;
     return sum;
 }
 
 /*  ----------- fonctions déterministes pour les tests ----------  */
 
-void MonteCarlo::price(double &prix, double &ic, PnlVect *G) {
+void MonteCarlo::price(double &prix, double &ic, PnlVect *G)
+{
 
     double sum = 0;
     double tmp = sum;
@@ -280,7 +340,10 @@ void MonteCarlo::price(double &prix, double &ic, PnlVect *G) {
     ic = 2 * 1.96 * sqrt(variance / nbSamples_);
 }
 
-void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic, PnlVect *G) {
+
+
+void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic, PnlVect *G)
+{
     double sum = 0;
     double tmp = sum;
     double sum_square = 0;
@@ -308,7 +371,10 @@ void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic, P
     ic = getIntervalleConfiance(variance);
 }
 
-void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *vect) {
+
+
+void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *vect)
+{
 
     double h = fdStep_;
     double payoff = 0;
