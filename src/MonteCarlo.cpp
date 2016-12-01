@@ -64,32 +64,76 @@ MonteCarlo::MonteCarlo(Param *P) {
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-void MonteCarlo::price(double &prix, double &ic) {
-    double sum = 0;
-    double tmp = sum;
-    double sum_square = 0;
-    double variance = 0;
-    double payoff = 0;
+void MonteCarlo::price(double &prix, double &ic) 
+{
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	if (0 == rank)
+	{
+		price_master(prix, ic);
+	}
+	else
+	{
+		//on calcule le nombre de samples par slave
+		int slaves = size - 1;
+		int samples = nbSamples_;
+		if (slaves == rank)
+		{
+			samples += (nbSamples_%slaves);
+		}
+
+		price_slave(samples);
+	}
+
+	MPI_Barrier();
+}
+
+
+void price_master(double &prix, double &ic)
+{
+	int size;
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	int slaves = size-1;
+	double sum = 0;
+	double sumSq = 0;
+	double res[2];
+
+	for (int i = 0; i < slaves; i++)
+	{
+		MPI_Recv(res, 2, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
+		sum += res[0];
+		sumSq += res[1];
+	}
+
+	double variance = getVariance(sum, sumSq, 0);
+	prix = getPrice(sum, 0);
+	ic = getIntervalleConfiance(variance);
+}
+
+
+void price_slave(const int samples)
+{
+	double res[2] = {0, 0};
+	double payoff;
 
     PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
 
-    for (int i = 0; i < nbSamples_; i++) {
+	for (int i = 0; i < samples; i++) {
         pnl_mat_set_all(path, 0);
         mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
         payoff = opt_->payoff(path);
-        sum += payoff;
-        sum_square += pow(payoff, 2);
+        res[0] += payoff;
+        res[1] += pow(payoff, 2);
     }
 
     pnl_mat_free(&path);
 
-    tmp = sum;
-    variance = getVariance(tmp, sum_square, 0);
-    prix = getPrice(sum, 0);
-    //    std::cout << "VARIANCE : " << variance << std::endl;
-    ic = getIntervalleConfiance(variance);
-
+	MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 }
+
 
 void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic) {
     double sum = 0;

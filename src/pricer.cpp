@@ -15,6 +15,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <time.h>
+#include <mpi.h>
 
 #include "Simulation.hpp"
 
@@ -26,6 +27,8 @@ using namespace std;
 int main(int argc, char** argv) 
 {
 	MPI_Init(argc, argv);
+	
+	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 	if (rank == 0)
@@ -33,9 +36,6 @@ int main(int argc, char** argv)
 		clock_t t;
 		t = clock();
 		const char* extension = "-c";
-
-
-		int rank;
 
 		if ((argc == 3) && (strcmp(argv[1], extension) == 0)) {
 			char *infile = argv[2];
