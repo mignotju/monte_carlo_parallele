@@ -14,35 +14,48 @@
 #include <iostream>
 #include <stdlib.h>
 #include <stdexcept>
+#include <
 #include <omp.h>
 
 using namespace std;
 
-MonteCarlo::MonteCarlo() {
+MonteCarlo::MonteCarlo(boolean parallel) {
     fdStep_ = 0.01;
     mod_ = new BlackScholesModel();
     nbSamples_ = 500;
     opt_ = new OptionBasket();
 
-    int seed = time(NULL);
-
-    int count;
-    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
-    if (count != omp_get_num_threads()) {
-      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    if (parallel) {
+      int rank,size;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+      int seed = time(NULL);
+      if (0 == rank) {
+        int count;
+        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
+        while (count != size) {
+          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
+        }
+         for (int i = 1; i < count; i++) {
+           PnlRng* my_rng = array_rng[i-1];
+           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+         }
+      } else {
+        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
+        pnl_rng_sseed(rng_, seed);
+      }
+    } else {
+      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+      pnl_rng_sseed(rng_, time(NULL));
     }
-    for (int i = 0; i < count; i++) {
-      pnl_rng_sseed(array_rng[i], seed);
-    }
 
-    rng_ = array_rng[omp_get_thread_num()];
-    
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-MonteCarlo::MonteCarlo(Param *P) {
+MonteCarlo::MonteCarlo(Param *P, boolean parallel) {
     mod_ = new BlackScholesModel(P);
     P->extract("fd step", fdStep_);
 
@@ -68,18 +81,30 @@ MonteCarlo::MonteCarlo(Param *P) {
         opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
     }
 
-    int seed = time(NULL);
-
-    int count;
-    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
-    if (count != omp_get_num_threads()) {
-      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    if (parallel) {
+      int rank,size;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+      int seed = time(NULL);
+      if (0 == rank) {
+        int count;
+        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
+        while (count != size) {
+          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
+        }
+         for (int i = 1; i < count; i++) {
+           PnlRng* my_rng = array_rng[i-1];
+           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+         }
+      } else {
+        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
+        pnl_rng_sseed(rng_, seed);
+      }
+    } else {
+      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+      pnl_rng_sseed(rng_, time(NULL));
     }
-    for (int i = 0; i < count; i++) {
-      pnl_rng_sseed(array_rng[i], seed);
-    }
-
-    rng_ = array_rng[omp_get_thread_num()];
 
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
