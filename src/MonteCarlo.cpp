@@ -13,7 +13,8 @@
 #include <math.h>
 #include <iostream>
 #include <stdlib.h>
-#include <stdexcept> 
+#include <stdexcept>
+#include <mpi.h>
 
 using namespace std;
 
