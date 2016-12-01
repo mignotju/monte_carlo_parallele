@@ -13,7 +13,8 @@
 #include <math.h>
 #include <iostream>
 #include <stdlib.h>
-#include <stdexcept> 
+#include <stdexcept>
+#include <omp.h>
 
 using namespace std;
 
@@ -23,8 +24,19 @@ MonteCarlo::MonteCarlo() {
     nbSamples_ = 500;
     opt_ = new OptionBasket();
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    int seed = time(NULL);
+
+    int count;
+    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
+    if (count != omp_get_num_threads()) {
+      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    }
+    for (int i = 0; i < count; i++) {
+      pnl_rng_sseed(array_rng[i], seed);
+    }
+
+    rng_ = array_rng[omp_get_thread_num()];
+    
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
@@ -56,8 +68,18 @@ MonteCarlo::MonteCarlo(Param *P) {
         opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
     }
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    int seed = time(NULL);
+
+    int count;
+    PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(0,omp_get_num_threads()-1, seed, &count);
+    if (count != omp_get_num_threads()) {
+      std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+    }
+    for (int i = 0; i < count; i++) {
+      pnl_rng_sseed(array_rng[i], seed);
+    }
+
+    rng_ = array_rng[omp_get_thread_num()];
 
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
