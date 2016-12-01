@@ -7,19 +7,19 @@
 
 using namespace std;
 
-Simulation::Simulation() {
+Simulation::Simulation(bool parallel) {
     rng = pnl_rng_create(PNL_RNG_MERSENNE);
     pnl_rng_sseed(rng,time(NULL));
     nbTimeStepH = 60;
-    monte_carlo = new MonteCarlo();
-    
+    monte_carlo = new MonteCarlo(parallel);
+
 }
 
-Simulation::Simulation(Param *P) {
+Simulation::Simulation(Param *P, bool parallel) {
     rng = pnl_rng_create(PNL_RNG_MERSENNE);
     pnl_rng_sseed(rng, time(NULL));
     P->extract("hedging dates number", nbTimeStepH);
-    monte_carlo = new MonteCarlo(P);
+    monte_carlo = new MonteCarlo(P, parallel);
 
 }
 
@@ -47,8 +47,8 @@ void Simulation::simu_couverture(PnlVect *val_pf, double &erreur_couverture, Pnl
 
     pnl_vect_set(price,0,prix);
     pnl_vect_set(val_pf,0,prix);
-    
-    //Calcul de delta0  
+
+    //Calcul de delta0
     PnlMat *past = pnl_mat_create(1, monte_carlo->mod_->size_);
     pnl_mat_set_row(past, monte_carlo->mod_->spot_, 0);
 
@@ -109,7 +109,7 @@ void Simulation::simu_couverture(PnlVect *val_pf, double &erreur_couverture, Pnl
 
     erreur_couverture = pnl_vect_get(V, nbTimeStepH) +
             pnl_vect_scalar_prod(delta, cours_date) - monte_carlo->opt_->payoff(path);
-    
+
     pnl_vect_free(&V);
     pnl_mat_free(&path);
     pnl_vect_free(&delta);
@@ -145,8 +145,8 @@ void Simulation::simu_couverture(PnlVect *val_pf, double &erreur_couverture, Pnl
 
     pnl_vect_set(price,0,prix);
     pnl_vect_set(val_pf,0,prix);
-    
-    //Calcul de delta0  
+
+    //Calcul de delta0
     PnlMat *past = pnl_mat_create(1, monte_carlo->mod_->size_);
     pnl_mat_set_row(past, monte_carlo->mod_->spot_, 0);
 
@@ -207,7 +207,7 @@ void Simulation::simu_couverture(PnlVect *val_pf, double &erreur_couverture, Pnl
 
     erreur_couverture = pnl_vect_get(V, nbTimeStepH) +
             pnl_vect_scalar_prod(delta, cours_date) - monte_carlo->opt_->payoff(path);
-    
+
     pnl_vect_free(&V);
     pnl_mat_free(&path);
     pnl_vect_free(&delta);

@@ -1,7 +1,7 @@
-/* 
+/*
  * File:   MonteCarlo.cpp
  * Author: cpaviot
- * 
+ *
  * Created on 17 septembre 2016, 13:49
  */
 
@@ -14,12 +14,12 @@
 #include <iostream>
 #include <stdlib.h>
 #include <stdexcept>
-#include <
+#include <mpi.h>
 #include <omp.h>
 
 using namespace std;
 
-MonteCarlo::MonteCarlo(boolean parallel) {
+MonteCarlo::MonteCarlo(bool parallel) {
     fdStep_ = 0.01;
     mod_ = new BlackScholesModel();
     nbSamples_ = 500;
@@ -55,7 +55,7 @@ MonteCarlo::MonteCarlo(boolean parallel) {
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-MonteCarlo::MonteCarlo(Param *P, boolean parallel) {
+MonteCarlo::MonteCarlo(Param *P, bool parallel) {
     mod_ = new BlackScholesModel(P);
     P->extract("fd step", fdStep_);
 
@@ -354,4 +354,3 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *ve
     pnl_mat_free(&shiftMoins);
     pnl_mat_free(&path);
 }
-

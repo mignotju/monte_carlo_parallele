@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 
-/* 
+/*
  * File:   pricer.cpp
  * Author: paviotch
  *
@@ -21,19 +21,21 @@
 using namespace std;
 
 /*
- * 
+ *
  */
 int main(int argc, char** argv) {
 
     clock_t t;
     t = clock();
     const char* extension = "-c";
+    bool parallel;
 
     if (argc ==3 && strcmp(argv[1], extension) == 0) {
+        parallel = false;
         char *infile = argv[2];
         Param *P = new Parser(infile);
 
-        Simulation *sim = new Simulation(P);
+        Simulation *sim = new Simulation(P, parallel);
         PnlVect * val_pf = pnl_vect_create(sim->nbTimeStepH + 1);
         PnlVect * price = pnl_vect_create(sim->nbTimeStepH + 1);
         double err = 0;
@@ -44,11 +46,11 @@ int main(int argc, char** argv) {
 
 
     } else if (argc == 2) {
-
+        parallel = true;
         char *infile = argv[1];
         Param *P = new Parser(infile);
 
-        Simulation *sim = new Simulation(P);
+        Simulation *sim = new Simulation(P, parallel);
         double prix = 0;
         double ic = 0;
 
@@ -56,7 +58,7 @@ int main(int argc, char** argv) {
         cout << "prix en 0 : " << prix << endl;
         cout << "largeur de l'intervalle de confiance en 0 pour le prix : " << ic << endl;
 
-        
+
         PnlMat * past = pnl_mat_create(1, sim->monte_carlo->mod_->size_);
         pnl_mat_set_row(past, sim->monte_carlo->mod_->spot_, 0);
         PnlVect *delta = pnl_vect_create(sim->monte_carlo->mod_->size_);
@@ -64,9 +66,9 @@ int main(int argc, char** argv) {
         sim->monte_carlo->delta(past, 0, delta);
         cout << "delta en 0 : " << endl;
         pnl_vect_print(delta);
-        
+
          t = clock() - t;
-         cout << "Temps d'exécution du programme : " << 
+         cout << "Temps d'exécution du programme : " <<
                  ((float)t)/CLOCKS_PER_SEC << " secondes." << endl;
 
 
@@ -79,4 +81,3 @@ int main(int argc, char** argv) {
 
     return 0;
 }
-
