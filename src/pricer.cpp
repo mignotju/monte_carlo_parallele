@@ -55,10 +55,16 @@ int main(int argc, char** argv)
 		char *infile = argv[1];
 		Param *P = new Parser(infile);
 
+		cout << "rank " << rank << " : constructeur" << endl;
+		MPI_Barrier(MPI_COMM_WORLD);
+
 		Simulation *sim = new Simulation(P, true);
 
 		double prix = 0;
 		double ic = 0;
+		
+		cout << "rank " << rank << " : price" << endl;
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		sim->monte_carlo->price(prix, ic);
 		MPI_Barrier(MPI_COMM_WORLD);

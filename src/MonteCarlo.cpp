@@ -21,98 +21,182 @@ using namespace std;
 
 MonteCarlo::MonteCarlo(bool parallel)
 {
-    fdStep_ = 0.01;
-    mod_ = new BlackScholesModel();
-    nbSamples_ = 500;
-    opt_ = new OptionBasket();
+	fdStep_ = 0.01;
+	mod_ = new BlackScholesModel();
+	nbSamples_ = 500;
+	opt_ = new OptionBasket();
 
-    if (parallel) {
-      int rank,size;
-      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      MPI_Comm_size(MPI_COMM_WORLD, &size);
-      int seed = time(NULL);
-      if (0 == rank) {
-        int count;
-        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
-        while (count != size) {
-          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
-          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
-        }
-         for (int i = 1; i < count; i++) {
-           PnlRng* my_rng = array_rng[i-1];
-           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
-         }
-      } else {
-        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
-        pnl_rng_sseed(rng_, seed);
-      }
-    } else {
-      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-      pnl_rng_sseed(rng_, time(NULL));
-    }
+	if (parallel)
+	{
+		int rank,size;
+		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+		MPI_Comm_size(MPI_COMM_WORLD, &size);
+		int seed = time(NULL);
 
-    shiftPlus_ = pnl_mat_new();
-    shiftMoins_ = pnl_mat_new();
-    path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
+		if (0 == rank)
+		{
+			int count;
+			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+			while (count != size-1)
+			{
+				std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+				array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+			}
+			for (int i = 1; i <= count; i++)
+			{
+				PnlRng my_rng = *array_rng[i-1];
+				MPI_Send(&my_rng, sizeof(PnlRng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+			}
+		}
+		else
+		{
+			PnlRng* my_rng;
+			MPI_Recv(my_rng, sizeof(PnlRng), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
+			rng_ = my_rng;
+			pnl_rng_sseed(rng_, seed);
+		}
+	}
+	else
+	{
+		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+		pnl_rng_sseed(rng_, time(NULL));
+	}
+
+	shiftPlus_ = pnl_mat_new();
+	shiftMoins_ = pnl_mat_new();
+	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
 
 
 MonteCarlo::MonteCarlo(Param *P, bool parallel)
 {
-    mod_ = new BlackScholesModel(P);
-    P->extract("fd step", fdStep_);
+	mod_ = new BlackScholesModel(P);
+	P->extract("fd step", fdStep_);
 
-    //Option
-    double maturity = 0;
-    int nbTimeSteps = 0;
-    double strike = 0;
-    string type = "";
-    P->extract("maturity", maturity);
-    P->extract("TimeStep Number", nbTimeSteps);
-    P->extract("strike", strike);
-    P->extract("option type", type);
-    PnlVect* lambda = pnl_vect_create(mod_->size_);
-    P->extract("payoff coefficients", lambda, mod_->size_);
+	//Option
+	double maturity = 0;
+	int nbTimeSteps = 0;
+	double strike = 0;
+	string type = "";
+	P->extract("maturity", maturity);
+	P->extract("TimeStep Number", nbTimeSteps);
+	P->extract("strike", strike);
+	P->extract("option type", type);
+	PnlVect* lambda = pnl_vect_create(mod_->size_);
+	P->extract("payoff coefficients", lambda, mod_->size_);
 
-    P->extract("Sample Number", nbSamples_);
+	P->extract("Sample Number", nbSamples_);
 
-    if (type.compare("asian") == 0) {
-        opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-    } else if (type.compare("basket") == 0) {
-        opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-    } else if (type.compare("performance") == 0) {
-        opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
-    }
+	if (type.compare("asian") == 0) {
+		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+	} else if (type.compare("basket") == 0) {
+		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+	} else if (type.compare("performance") == 0) {
+		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+	}
 
-    if (parallel) {
-      int rank,size;
-      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      MPI_Comm_size(MPI_COMM_WORLD, &size);
-      int seed = time(NULL);
-      if (0 == rank) {
-        int count;
-        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
-        while (count != size) {
-          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
-          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
-        }
-         for (int i = 1; i < count; i++) {
-           PnlRng* my_rng = array_rng[i-1];
-           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
-         }
-      } else {
-        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
-        pnl_rng_sseed(rng_, seed);
-      }
-    } else {
-      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-      pnl_rng_sseed(rng_, time(NULL));
-    }
+	if (parallel)
+	{
+		int rank,size;
+		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+		MPI_Comm_size(MPI_COMM_WORLD, &size);
+		int seed = time(NULL);
 
-    shiftPlus_ = pnl_mat_new();
-    shiftMoins_ = pnl_mat_new();
-    path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
+		if (0 == rank)
+		{
+			int count;
+			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+			while (count != size-1)
+			{
+				std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+				array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+			}
+
+			for (int i = 1; i <= count; i++)
+			{
+				int count, bufsize=0, pos=0;
+				PnlRng* my_rng = array_rng[i-1];
+
+				/*Getting pack size*/
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
+				bufsize += count;
+
+				/*Creating pack*/
+				char* buf = new char[bufsize];
+				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->counter), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->has_gauss), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->gauss), 1, MPI_DOUBLE, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize, &pos, MPI_COMM_WORLD);
+
+				cout << "rank " << rank << " va envoyer a " << i  << endl;
+				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+			
+				delete(buf);
+			}
+		}
+		else
+		{
+			int bufsize;
+			MPI_Status status;
+			//cout << "rank " << rank << " va recevoir" << endl;
+
+			cout << "rank " << rank << " probe" << endl;
+			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+			cout << "rank " << rank << " count" << endl;
+			MPI_Get_count(&status, MPI_PACKED, &bufsize);
+			cout << "rank " << rank << " count2" << endl;
+
+
+			char* buf = new char[bufsize];
+
+			cout << "rank " << rank << " prepare" << endl;
+			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+			cout << "rank " << rank << " recoit" << endl;
+
+			rng_ = pnl_rng_new();
+			int pos = 0;
+
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->type), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->has_gauss), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->gauss), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->size_state), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, rng_->state, rng_->size_state, MPI_BYTE, MPI_COMM_WORLD);
+
+			pnl_rng_sseed(rng_, seed);
+			delete(buf);
+		}
+	}
+	else
+	{
+		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+		pnl_rng_sseed(rng_, time(NULL));
+	}
+
+	shiftPlus_ = pnl_mat_new();
+	shiftMoins_ = pnl_mat_new();
+	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
 
@@ -121,13 +205,17 @@ void MonteCarlo::price(double &prix, double &ic)
 {
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    
+
 	if (0 == rank)
 	{
+		cout << "rank " << rank << " : price_master" << endl;
+		MPI_Barrier(MPI_COMM_WORLD);
 		price_master(prix, ic);
 	}
 	else
 	{
+		cout << "rank " << rank << " : price_slave" << endl;
+		MPI_Barrier(MPI_COMM_WORLD);
 		price_slave();
 	}
 }
@@ -175,17 +263,17 @@ void MonteCarlo::price_slave()
 	double res[2] = {0, 0};
 	double payoff;
 
-    PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
+	PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
 
 	for (int i = 0; i < samples; i++) {
-        pnl_mat_set_all(path, 0);
-        mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
-        payoff = opt_->payoff(path);
-        res[0] += payoff;
-        res[1] += pow(payoff, 2);
-    }
+		pnl_mat_set_all(path, 0);
+		mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
+		payoff = opt_->payoff(path);
+		res[0] += payoff;
+		res[1] += pow(payoff, 2);
+	}
 
-    pnl_mat_free(&path);
+	pnl_mat_free(&path);
 
 	MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 }
@@ -194,87 +282,87 @@ void MonteCarlo::price_slave()
 
 void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic)
 {
-    double sum = 0;
-    double tmp = sum;
-    double sum_square = 0;
-    double variance = 0;
-    double payoff = 0;
+	double sum = 0;
+	double tmp = sum;
+	double sum_square = 0;
+	double variance = 0;
+	double payoff = 0;
 
-    PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
-    for (int i = 0; i < nbSamples_; i++) {
-        mod_->asset(path, t, opt_->T_, opt_->nbTimeSteps_, rng_, past);
-        payoff = opt_->payoff(path);
-        sum += payoff;
-        sum_square += pow(payoff, 2);
-    }
+	PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
+	for (int i = 0; i < nbSamples_; i++) {
+		mod_->asset(path, t, opt_->T_, opt_->nbTimeSteps_, rng_, past);
+		payoff = opt_->payoff(path);
+		sum += payoff;
+		sum_square += pow(payoff, 2);
+	}
 
-    pnl_mat_free(&path);
+	pnl_mat_free(&path);
 
-    tmp = sum;
-    variance = getVariance(tmp, sum_square, t);
-    prix = getPrice(sum, t);
-    ic = getIntervalleConfiance(variance);
+	tmp = sum;
+	variance = getVariance(tmp, sum_square, t);
+	prix = getPrice(sum, t);
+	ic = getIntervalleConfiance(variance);
 }
 
 
 
 void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta)
 {
-    double h = fdStep_;
-    double payoff = 0;
-    double prec = 0;
+	double h = fdStep_;
+	double payoff = 0;
+	double prec = 0;
 
-    PnlVect *sum_square = pnl_vect_create_from_zero(delta->size);
-    PnlVect *ic = pnl_vect_create_from_zero(delta->size);
+	PnlVect *sum_square = pnl_vect_create_from_zero(delta->size);
+	PnlVect *ic = pnl_vect_create_from_zero(delta->size);
 
-    pnl_vect_set_all(delta, 0);
-    // Moyenne des payoffs
-    for (int j = 0; j < nbSamples_; j++) {
-        // Simulation du path
-        if (t == 0) {
-            this->mod_->asset(path_, this->opt_->T_, this->opt_->nbTimeSteps_, rng_);
-        } else {
-            this->mod_->asset(path_, t, this->opt_->T_, this->opt_->nbTimeSteps_, rng_, past);
-        }
+	pnl_vect_set_all(delta, 0);
+	// Moyenne des payoffs
+	for (int j = 0; j < nbSamples_; j++) {
+		// Simulation du path
+		if (t == 0) {
+			this->mod_->asset(path_, this->opt_->T_, this->opt_->nbTimeSteps_, rng_);
+		} else {
+			this->mod_->asset(path_, t, this->opt_->T_, this->opt_->nbTimeSteps_, rng_, past);
+		}
 
-        // Shift_path
-        for (int i = 0; i < this->mod_->size_; i++) {
-            // Création des trajectoires shiftées
-            this->mod_->shiftAsset(shiftPlus_, path_, i, h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
-            this->mod_->shiftAsset(shiftMoins_, path_, i, -h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
-            payoff = this->opt_->payoff(shiftPlus_) - this->opt_->payoff(shiftMoins_);
-            prec = pnl_vect_get(delta, i);
-            pnl_vect_set(delta, i, prec + payoff);
+		// Shift_path
+		for (int i = 0; i < this->mod_->size_; i++) {
+			// Création des trajectoires shiftées
+			this->mod_->shiftAsset(shiftPlus_, path_, i, h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
+			this->mod_->shiftAsset(shiftMoins_, path_, i, -h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
+			payoff = this->opt_->payoff(shiftPlus_) - this->opt_->payoff(shiftMoins_);
+			prec = pnl_vect_get(delta, i);
+			pnl_vect_set(delta, i, prec + payoff);
 
-            //pour l'intervalle de confiance
-            pnl_vect_set(sum_square, i, pnl_vect_get(sum_square, i) + pow(payoff, 2));
-        }
-    }
-    //Pour l'intervalle de confiance en 0
-    if (t == 0) {
-        for (int i = 0; i < this->mod_->size_; i++) {
-            pnl_vect_set(ic, i, sqrt((pnl_vect_get(sum_square, i) / nbSamples_) - (pow(pnl_vect_get(delta, i), 2) / pow(nbSamples_, 2))));
-        }
-    }
+			//pour l'intervalle de confiance
+			pnl_vect_set(sum_square, i, pnl_vect_get(sum_square, i) + pow(payoff, 2));
+		}
+	}
+	//Pour l'intervalle de confiance en 0
+	if (t == 0) {
+		for (int i = 0; i < this->mod_->size_; i++) {
+			pnl_vect_set(ic, i, sqrt((pnl_vect_get(sum_square, i) / nbSamples_) - (pow(pnl_vect_get(delta, i), 2) / pow(nbSamples_, 2))));
+		}
+	}
 
-    double coeff = exp(-mod_->r_ * (opt_->T_ - t)) / (2 * nbSamples_ * h);
+	double coeff = exp(-mod_->r_ * (opt_->T_ - t)) / (2 * nbSamples_ * h);
 
-    pnl_vect_mult_scalar(ic, 2 * coeff * nbSamples_ * 1.96 / sqrt(nbSamples_));
-    pnl_vect_mult_scalar(delta, coeff);
-    PnlVect *copy = pnl_vect_create_from_zero(past->n);
-    pnl_mat_get_row(copy, past, past->m - 1);
+	pnl_vect_mult_scalar(ic, 2 * coeff * nbSamples_ * 1.96 / sqrt(nbSamples_));
+	pnl_vect_mult_scalar(delta, coeff);
+	PnlVect *copy = pnl_vect_create_from_zero(past->n);
+	pnl_mat_get_row(copy, past, past->m - 1);
 
-    pnl_vect_div_vect_term(delta, copy);
+	pnl_vect_div_vect_term(delta, copy);
 
-    pnl_vect_div_vect_term(ic, copy);
-    if (t == 0) {
-        cout << "largeur des intervalles de confiance pour DELTA en t=0 : " << endl;
-        pnl_vect_print(ic);
-    }
+	pnl_vect_div_vect_term(ic, copy);
+	if (t == 0) {
+		cout << "largeur des intervalles de confiance pour DELTA en t=0 : " << endl;
+		pnl_vect_print(ic);
+	}
 
-    pnl_vect_free(&copy);
-    pnl_vect_free(&sum_square);
-    pnl_vect_free(&ic);
+	pnl_vect_free(&copy);
+	pnl_vect_free(&sum_square);
+	pnl_vect_free(&ic);
 
 }
 
@@ -282,36 +370,36 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta)
 
 MonteCarlo::~MonteCarlo()
 {
-    pnl_rng_free(&rng_);
-    pnl_mat_free(&shiftMoins_);
-    pnl_mat_free(&shiftPlus_);
-    pnl_mat_free(&path_);
+	pnl_rng_free(&rng_);
+	pnl_mat_free(&shiftMoins_);
+	pnl_mat_free(&shiftPlus_);
+	pnl_mat_free(&path_);
 }
 
 /*  ----------- fonctions auxiliaires de factorisation du code ----------  */
 
 double MonteCarlo::getVariance(double sum, double sum_square, double t)
 {
-    sum /= nbSamples_;
-    sum = pow(sum, 2);
+	sum /= nbSamples_;
+	sum = pow(sum, 2);
 
-    sum_square /= nbSamples_;
-    return exp(-2 * mod_->r_ * (opt_->T_ - t))*(sum_square - sum);
+	sum_square /= nbSamples_;
+	return exp(-2 * mod_->r_ * (opt_->T_ - t))*(sum_square - sum);
 }
 
 
 
 double MonteCarlo::getIntervalleConfiance(double variance)
 {
-    return 2 * 1.96 * sqrt(variance / nbSamples_);
+	return 2 * 1.96 * sqrt(variance / nbSamples_);
 }
 
 
 
 double MonteCarlo::getPrice(double sum, double t)
 {
-    sum *= exp(-mod_->r_ * (opt_->T_ - t)) / nbSamples_;
-    return sum;
+	sum *= exp(-mod_->r_ * (opt_->T_ - t)) / nbSamples_;
+	return sum;
 }
 
 /*  ----------- fonctions déterministes pour les tests ----------  */
@@ -319,66 +407,66 @@ double MonteCarlo::getPrice(double sum, double t)
 void MonteCarlo::price(double &prix, double &ic, PnlVect *G)
 {
 
-    double sum = 0;
-    double tmp = sum;
-    double sum_square = 0;
-    double variance = 0;
-    double payoff = 0;
-    prix = 0;
-    ic = 0;
+	double sum = 0;
+	double tmp = sum;
+	double sum_square = 0;
+	double variance = 0;
+	double payoff = 0;
+	prix = 0;
+	ic = 0;
 
-    PnlMat *path = pnl_mat_create_from_ptr(1, mod_->size_, mod_->spot_->array);
+	PnlMat *path = pnl_mat_create_from_ptr(1, mod_->size_, mod_->spot_->array);
 
-    for (int i = 0; i < nbSamples_; i++) {
+	for (int i = 0; i < nbSamples_; i++) {
 
-        mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, G);
-        payoff = opt_->payoff(path);
-        sum += payoff;
-        sum_square += pow(payoff, 2);
-    }
-    pnl_mat_free(&path);
+		mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, G);
+		payoff = opt_->payoff(path);
+		sum += payoff;
+		sum_square += pow(payoff, 2);
+	}
+	pnl_mat_free(&path);
 
-    tmp = sum;
-    tmp /= nbSamples_;
-    tmp = pow(tmp, 2);
-    sum_square /= nbSamples_;
+	tmp = sum;
+	tmp /= nbSamples_;
+	tmp = pow(tmp, 2);
+	sum_square /= nbSamples_;
 
-    variance = exp(-2 * mod_->r_ * opt_->T_)*(sum_square - tmp);
-    //std::cout << "VARIANCE : " << variance << std::endl;
-    sum *= exp(-mod_->r_ * opt_->T_) / nbSamples_;
-    prix = sum;
-    ic = 2 * 1.96 * sqrt(variance / nbSamples_);
+	variance = exp(-2 * mod_->r_ * opt_->T_)*(sum_square - tmp);
+	//std::cout << "VARIANCE : " << variance << std::endl;
+	sum *= exp(-mod_->r_ * opt_->T_) / nbSamples_;
+	prix = sum;
+	ic = 2 * 1.96 * sqrt(variance / nbSamples_);
 }
 
 
 
 void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic, PnlVect *G)
 {
-    double sum = 0;
-    double tmp = sum;
-    double sum_square = 0;
-    double variance = 0;
-    double payoff;
-    prix = 0;
-    ic = 0;
+	double sum = 0;
+	double tmp = sum;
+	double sum_square = 0;
+	double variance = 0;
+	double payoff;
+	prix = 0;
+	ic = 0;
 
 
-    PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
+	PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
 
-    for (int i = 0; i < nbSamples_; i++) {
-        mod_->asset(path, t, opt_->T_, opt_->nbTimeSteps_, G, past);
-        payoff = opt_->payoff(path);
-        sum += payoff;
-        sum_square += pow(payoff, 2);
+	for (int i = 0; i < nbSamples_; i++) {
+		mod_->asset(path, t, opt_->T_, opt_->nbTimeSteps_, G, past);
+		payoff = opt_->payoff(path);
+		sum += payoff;
+		sum_square += pow(payoff, 2);
 
-    }
+	}
 
-    pnl_mat_free(&path);
-    tmp = sum;
-    variance = getVariance(tmp, sum_square, t);
-    prix = getPrice(sum, t);
-    //    std::cout << "VARIANCE : " << variance << std::endl;
-    ic = getIntervalleConfiance(variance);
+	pnl_mat_free(&path);
+	tmp = sum;
+	variance = getVariance(tmp, sum_square, t);
+	prix = getPrice(sum, t);
+	//    std::cout << "VARIANCE : " << variance << std::endl;
+	ic = getIntervalleConfiance(variance);
 }
 
 
@@ -386,44 +474,44 @@ void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic, P
 void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *vect)
 {
 
-    double h = fdStep_;
-    double payoff = 0;
-    double prec = 0;
-    PnlMat *path = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
-    PnlMat *shiftPlus = pnl_mat_new();
-    PnlMat *shiftMoins = pnl_mat_new();
+	double h = fdStep_;
+	double payoff = 0;
+	double prec = 0;
+	PnlMat *path = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
+	PnlMat *shiftPlus = pnl_mat_new();
+	PnlMat *shiftMoins = pnl_mat_new();
 
 
-    pnl_vect_set_all(delta, 0);
-    // Moyenne des payoffs
-    for (int j = 0; j < nbSamples_; j++) {
-        // Simulation du path
-        if (t == 0) {
-            this->mod_->asset(path, this->opt_->T_, this->opt_->nbTimeSteps_, vect);
-        } else {
-            this->mod_->asset(path, t, this->opt_->T_, this->opt_->nbTimeSteps_, vect, past);
-        }
+	pnl_vect_set_all(delta, 0);
+	// Moyenne des payoffs
+	for (int j = 0; j < nbSamples_; j++) {
+		// Simulation du path
+		if (t == 0) {
+			this->mod_->asset(path, this->opt_->T_, this->opt_->nbTimeSteps_, vect);
+		} else {
+			this->mod_->asset(path, t, this->opt_->T_, this->opt_->nbTimeSteps_, vect, past);
+		}
 
-        // Shift_path
-        for (int i = 0; i < this->mod_->size_; i++) {
-            // Création des trajectoires shiftées
+		// Shift_path
+		for (int i = 0; i < this->mod_->size_; i++) {
+			// Création des trajectoires shiftées
 
-            this->mod_->shiftAsset(shiftPlus, path, i, h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
-            this->mod_->shiftAsset(shiftMoins, path, i, -h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
-            payoff = this->opt_->payoff(shiftPlus) - this->opt_->payoff(shiftMoins);
-            prec = pnl_vect_get(delta, i);
-            pnl_vect_set(delta, i, prec + payoff);
-        }
-    }
+			this->mod_->shiftAsset(shiftPlus, path, i, h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
+			this->mod_->shiftAsset(shiftMoins, path, i, -h, t, this->opt_->T_ / this->opt_->nbTimeSteps_);
+			payoff = this->opt_->payoff(shiftPlus) - this->opt_->payoff(shiftMoins);
+			prec = pnl_vect_get(delta, i);
+			pnl_vect_set(delta, i, prec + payoff);
+		}
+	}
 
-    double coeff = exp(-mod_->r_ * (opt_->T_ - t)) / (2 * nbSamples_ * h);
-    pnl_vect_mult_scalar(delta, coeff);
-    PnlVect *copy = pnl_vect_create_from_zero(past->n);
-    pnl_mat_get_row(copy, past, past->m - 1);
-    pnl_vect_div_vect_term(delta, copy);
+	double coeff = exp(-mod_->r_ * (opt_->T_ - t)) / (2 * nbSamples_ * h);
+	pnl_vect_mult_scalar(delta, coeff);
+	PnlVect *copy = pnl_vect_create_from_zero(past->n);
+	pnl_mat_get_row(copy, past, past->m - 1);
+	pnl_vect_div_vect_term(delta, copy);
 
-    pnl_vect_free(&copy);
-    pnl_mat_free(&shiftPlus);
-    pnl_mat_free(&shiftMoins);
-    pnl_mat_free(&path);
+	pnl_vect_free(&copy);
+	pnl_mat_free(&shiftPlus);
+	pnl_mat_free(&shiftMoins);
+	pnl_mat_free(&path);
 }
