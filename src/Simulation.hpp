@@ -1,4 +1,4 @@
-/* 
+/*
  * File:   Simulation.hpp
  * Author: mignotju
  *
@@ -12,7 +12,7 @@
 
 /*!
  * \file Simulation.hpp
- * \brief Simulation 
+ * \brief Simulation
  */
 class Simulation
 {
@@ -20,42 +20,42 @@ public:
     MonteCarlo* monte_carlo;
     int nbTimeStepH; /// nombre de dates de rebalancement
     PnlRng *rng;
-    
+
     /**
      * \brief Constructeur par defaut
      */
-    Simulation();
-    
+    Simulation(bool parallel);
+
     /**
      * \brief Constructeur à partir d'un fichier
      * @param P  parseur pour l'extraction de données dans un fichier
      */
-    Simulation(Param *P);
-    
+    Simulation(Param *P, bool parallel);
+
     /**
      * \brief Destructeur
      */
     ~Simulation();
-    
+
     /**
      * Fonction de simulation de la couverture
-     * 
+     *
      * @param[out] V  valeur du portefeuille de couverture
      * @param[out] erreur_couverture  erreur de couverture
      * @param[out] price  prix théorique de l'option
      */
     void simu_couverture(PnlVect *V, double &erreur_couverture, PnlVect *price);
-    
+
     /**
      * Fonction de simulation de la couverture pour nos tests
-     * 
+     *
      * @param[out] V  valeur du portefeuille de couverture
      * @param[out] erreur_couverture  erreur de couverture
      * @param[out] price
      * @param[in] G  vecteur fixe représentant l'aléatoire pour nos tests
      */
     void simu_couverture(PnlVect *V, double &erreur_couverture, PnlVect *price, PnlVect *G);
-    
+
     /**
      * Génère une trajectoire du modèle et la stocke dans path
      *
@@ -66,5 +66,3 @@ public:
     void simul_market(int nbAsset, PnlMat *path);
 
 };
-
-

@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 
-/* 
+/*
  * File:   pricer.cpp
  * Author: paviotch
  *
@@ -15,68 +15,83 @@
 #include <iostream>
 #include <stdlib.h>
 #include <time.h>
+#include <mpi.h>
 
 #include "Simulation.hpp"
 
 using namespace std;
 
-/*
- * 
- */
-int main(int argc, char** argv) {
+int main(int argc, char** argv) 
+{
+	MPI_Init(&argc, &argv);
 
-    clock_t t;
-    t = clock();
-    const char* extension = "-c";
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (argc ==3 && strcmp(argv[1], extension) == 0) {
-        char *infile = argv[2];
-        Param *P = new Parser(infile);
+	clock_t t;
+	t = clock();
+	const char* extension = "-c";
 
-        Simulation *sim = new Simulation(P);
-        PnlVect * val_pf = pnl_vect_create(sim->nbTimeStepH + 1);
-        PnlVect * price = pnl_vect_create(sim->nbTimeStepH + 1);
-        double err = 0;
+	if ((argc == 3) && (strcmp(argv[1], extension) == 0))
+	{
+		if (0 == rank)
+		{
+			char *infile = argv[2];
+			Param *P = new Parser(infile);
 
-        sim->simu_couverture(val_pf, err, price);
+			Simulation *sim = new Simulation(P, false);
+			PnlVect * val_pf = pnl_vect_create(sim->nbTimeStepH + 1);
+			PnlVect * price = pnl_vect_create(sim->nbTimeStepH + 1);
+			double err = 0;
 
-        cout << "erreur P&L : " << err << endl;
+			sim->simu_couverture(val_pf, err, price);
 
+			cout << "erreur P&L : " << err << endl;
+		}
+	}
+	else if (argc == 2)
+	{
+		char *infile = argv[1];
+		Param *P = new Parser(infile);
 
-    } else if (argc == 2) {
+		Simulation *sim = new Simulation(P, true);
 
-        char *infile = argv[1];
-        Param *P = new Parser(infile);
+		double prix = 0;
+		double ic = 0;
 
-        Simulation *sim = new Simulation(P);
-        double prix = 0;
-        double ic = 0;
+		sim->monte_carlo->price(prix, ic);
+		MPI_Barrier(MPI_COMM_WORLD);
 
-        sim->monte_carlo->price(prix, ic);
-        cout << "prix en 0 : " << prix << endl;
-        cout << "largeur de l'intervalle de confiance en 0 pour le prix : " << ic << endl;
+		if (0 == rank)
+		{
+			cout << "prix en 0 : " << prix << endl;
+			cout << "largeur de l'intervalle de confiance en 0 pour le prix : "
+				<< ic << endl;
 
-        
-        PnlMat * past = pnl_mat_create(1, sim->monte_carlo->mod_->size_);
-        pnl_mat_set_row(past, sim->monte_carlo->mod_->spot_, 0);
-        PnlVect *delta = pnl_vect_create(sim->monte_carlo->mod_->size_);
+			PnlMat * past = pnl_mat_create(1, sim->monte_carlo->mod_->size_);
+			pnl_mat_set_row(past, sim->monte_carlo->mod_->spot_, 0);
+			PnlVect *delta = pnl_vect_create(sim->monte_carlo->mod_->size_);
 
-        sim->monte_carlo->delta(past, 0, delta);
-        cout << "delta en 0 : " << endl;
-        pnl_vect_print(delta);
-        
-         t = clock() - t;
-         cout << "Temps d'exécution du programme : " << 
-                 ((float)t)/CLOCKS_PER_SEC << " secondes." << endl;
+			sim->monte_carlo->delta(past, 0, delta);
+			cout << "delta en 0 : " << endl;
+			pnl_vect_print(delta);
 
+			t = clock() - t;
+			cout << "Temps d'exécution du programme : " << 
+				((float)t)/CLOCKS_PER_SEC << " secondes." << endl;
+		}
+	}
+	else
+	{
+		if (0 == rank)
+		{
+			cout << "Veuillez tapez une des commandes suivantes"
+				<< " : ./pricer fichier ou ./pricer -c fichier" << endl;
+		}
+	}
 
-    } else {
-    	cout << "Veuillez tapez une des commandes suivantes"
-    			" : ./pricer fichier ou ./pricer -c fichier" << endl;
-    	exit(1);
-    }
+	MPI_Finalize();
 
-
-    return 0;
+	return 0;
 }
-
