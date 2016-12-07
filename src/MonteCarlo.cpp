@@ -1,7 +1,7 @@
-/* 
+/*
  * File:   MonteCarlo.cpp
  * Author: cpaviot
- * 
+ *
  * Created on 17 septembre 2016, 13:49
  */
 
@@ -13,24 +13,49 @@
 #include <math.h>
 #include <iostream>
 #include <stdlib.h>
-#include <stdexcept> 
+#include <stdexcept>
+#include <mpi.h>
+#include <omp.h>
 
 using namespace std;
 
-MonteCarlo::MonteCarlo() {
+MonteCarlo::MonteCarlo(bool parallel) {
     fdStep_ = 0.01;
     mod_ = new BlackScholesModel();
     nbSamples_ = 500;
     opt_ = new OptionBasket();
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    if (parallel) {
+      int rank,size;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+      int seed = time(NULL);
+      if (0 == rank) {
+        int count;
+        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
+        while (count != size) {
+          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
+        }
+         for (int i = 1; i < count; i++) {
+           PnlRng* my_rng = array_rng[i-1];
+           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+         }
+      } else {
+        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
+        pnl_rng_sseed(rng_, seed);
+      }
+    } else {
+      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+      pnl_rng_sseed(rng_, time(NULL));
+    }
+
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
     path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-MonteCarlo::MonteCarlo(Param *P) {
+MonteCarlo::MonteCarlo(Param *P, bool parallel) {
     mod_ = new BlackScholesModel(P);
     P->extract("fd step", fdStep_);
 
@@ -56,8 +81,30 @@ MonteCarlo::MonteCarlo(Param *P) {
         opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
     }
 
-    rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng_, time(NULL));
+    if (parallel) {
+      int rank,size;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+      int seed = time(NULL);
+      if (0 == rank) {
+        int count;
+        PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1,size, seed, &count);
+        while (count != size) {
+          std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
+          array_rng = pnl_rng_dcmt_create_array_id(0,size-1, seed, &count);
+        }
+         for (int i = 1; i < count; i++) {
+           PnlRng* my_rng = array_rng[i-1];
+           MPI_Send(&my_rng, sizeof(my_rng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+         }
+      } else {
+        MPI_Recv(&rng_, sizeof(rng_), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
+        pnl_rng_sseed(rng_, seed);
+      }
+    } else {
+      rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+      pnl_rng_sseed(rng_, time(NULL));
+    }
 
     shiftPlus_ = pnl_mat_new();
     shiftMoins_ = pnl_mat_new();
@@ -307,4 +354,3 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *ve
     pnl_mat_free(&shiftMoins);
     pnl_mat_free(&path);
 }
-
