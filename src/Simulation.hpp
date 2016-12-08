@@ -22,11 +22,6 @@ public:
     PnlRng *rng;
 
     /**
-     * \brief Constructeur par defaut
-     */
-    Simulation(bool parallel);
-
-    /**
      * \brief Constructeur à partir d'un fichier
      * @param P  parseur pour l'extraction de données dans un fichier
      */
@@ -45,16 +40,6 @@ public:
      * @param[out] price  prix théorique de l'option
      */
     void simu_couverture(PnlVect *V, double &erreur_couverture, PnlVect *price);
-
-    /**
-     * Fonction de simulation de la couverture pour nos tests
-     *
-     * @param[out] V  valeur du portefeuille de couverture
-     * @param[out] erreur_couverture  erreur de couverture
-     * @param[out] price
-     * @param[in] G  vecteur fixe représentant l'aléatoire pour nos tests
-     */
-    void simu_couverture(PnlVect *V, double &erreur_couverture, PnlVect *price, PnlVect *G);
 
     /**
      * Génère une trajectoire du modèle et la stocke dans path
