@@ -23,11 +23,6 @@ public:
     PnlMat *path_;
 
     /**
-     * \brief Constructeur par defaut
-     */
-    MonteCarlo(bool parallel);
-
-    /**
      * \brief Constructeur à partir d'un fichier
      * @param P  parseur d'extraction des données dans un fichier
      */
@@ -60,19 +55,7 @@ public:
 	 * @param[in] samples nombre de simulations que doit réaliser ce processus
 	 */
 	void price_slave();
-   
-
-
-    /**
-     * Calcule le prix de l'option à la date 0 pour les tests
-     *
-     * @param[out] prix valeur de l'estimateur Monte Carlo
-     * @param[out] ic largeur de l'intervalle de confiance
-     * @param[in] inVects tableau de pointeurs sur des vecteurs G
-     * @param[in] size taille du tableau inVects
-     */
-    void price(double &prix, double &ic, PnlVect *G);
-
+ 
     /**
      * Calcule le prix de l'option à la date t
      *
@@ -83,20 +66,8 @@ public:
      * @param[out] ic contient la largeur de l'intervalle
      * de confiance sur le calcul du prix
      */
+
     void price(const PnlMat *past, double t, double &prix, double &ic);
-
-    /**
-     * Calcule le prix de l'option à la date t pour les tests
-     *
-     * @param[in]  past contient la trajectoire du sous-jacent
-     * jusqu'à l'instant t
-     * @param[in] t date à laquelle le calcul est fait
-     * @param[out] prix contient le prix
-     * @param[out] ic contient la largeur de l'intervalle
-     * de confiance sur le calcul du prix
-     */
-    void price(const PnlMat *past, double t, double &prix, double &ic, PnlVect *G);
-
     /**
      *
      * @param sum pour le calcul de la deuxième partie de la variance
@@ -129,19 +100,4 @@ public:
      * de confiance sur le calcul du delta
      */
     void delta(const PnlMat *past, double t, PnlVect *delta);
-
-    /**
-     * Calcule le delta de l'option à la date t
-     * Fonction utilisée pour les tests
-     *
-     * @param[in] past  contient la trajectoire du sous-jacent
-     * jusqu'à l'instant t
-     * @param[in] t  date à laquelle le calcul est fait
-     * @param[out] delta  contient le vecteur de delta
-     * de confiance sur le calcul du delta
-     * @param[in] vect  vecteur représentant l'aléatoire du modèle
-     */
-    void delta(const PnlMat *past, double t, PnlVect *delta, PnlVect *vect);
-
-
 };
