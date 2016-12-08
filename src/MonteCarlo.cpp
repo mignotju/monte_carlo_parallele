@@ -36,24 +36,86 @@ MonteCarlo::MonteCarlo(bool parallel)
 		if (0 == rank)
 		{
 			int count;
-			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
-			while (count != size-1)
+			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
+			while (count != size)
 			{
-				std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
-				array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+				cout << "Nombre de générateurs créés incorrects !" << endl;
+				array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
 			}
-			for (int i = 1; i <= count; i++)
+
+			for (int i = 1; i < count; i++)
 			{
-				PnlRng my_rng = *array_rng[i-1];
-				MPI_Send(&my_rng, sizeof(PnlRng), MPI_BYTE, i, 0, MPI_COMM_WORLD);
+				int count, bufsize=0, pos=0;
+				PnlRng* my_rng = array_rng[i];
+				pnl_rng_sseed(my_rng, seed);
+
+				/*Getting pack size*/
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				bufsize += count;
+				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
+				bufsize += count;
+
+				/*Creating pack*/
+				char* buf = new char[bufsize];
+
+				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->counter), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->has_gauss), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->gauss), 1, MPI_DOUBLE, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize, &pos, MPI_COMM_WORLD);
+
+				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+			
+				delete(buf);
 			}
+
+			rng_ = array_rng[0];
+			pnl_rng_sseed(rng_, seed);
 		}
 		else
 		{
-			PnlRng* my_rng;
-			MPI_Recv(my_rng, sizeof(PnlRng), MPI_BYTE, 0, 0, MPI_COMM_WORLD, NULL);
-			rng_ = my_rng;
+			int bufsize;
+			MPI_Status status;
+
+			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+			MPI_Get_count(&status, MPI_PACKED, &bufsize);
+
+
+			char* buf = new char[bufsize];
+
+			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+
+			int pos = 0;
+			int type;
+
+			MPI_Unpack(buf, bufsize, &pos, &(type), 1, MPI_INT, MPI_COMM_WORLD);
+			rng_ = pnl_rng_create(type);
+
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->has_gauss), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->gauss), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(rng_->size_state), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, rng_->state, rng_->size_state, MPI_BYTE, MPI_COMM_WORLD);
+
 			pnl_rng_sseed(rng_, seed);
+			delete(buf);
 		}
 	}
 	else
@@ -106,17 +168,18 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 		if (0 == rank)
 		{
 			int count;
-			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
-			while (count != size-1)
+			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
+			while (count != size)
 			{
-				std::cout << "Nombre de générateurs créés incorrects !" << std::endl;
-				array_rng = pnl_rng_dcmt_create_array_id(1, size-1, seed, &count);
+				cout << "Nombre de générateurs créés incorrects !" << endl;
+				array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
 			}
 
-			for (int i = 1; i <= count; i++)
+			for (int i = 1; i < count; i++)
 			{
 				int count, bufsize=0, pos=0;
-				PnlRng* my_rng = array_rng[i-1];
+				PnlRng* my_rng = array_rng[i];
+				pnl_rng_sseed(my_rng, seed);
 
 				/*Getting pack size*/
 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
@@ -138,6 +201,7 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 
 				/*Creating pack*/
 				char* buf = new char[bufsize];
+
 				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
 				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
 				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
@@ -147,35 +211,33 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
 				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize, &pos, MPI_COMM_WORLD);
 
-				cout << "rank " << rank << " va envoyer a " << i  << endl;
 				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
 			
 				delete(buf);
 			}
+
+			rng_ = array_rng[0];
+			pnl_rng_sseed(rng_, seed);
 		}
 		else
 		{
 			int bufsize;
 			MPI_Status status;
-			//cout << "rank " << rank << " va recevoir" << endl;
 
-			cout << "rank " << rank << " probe" << endl;
 			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
-			cout << "rank " << rank << " count" << endl;
 			MPI_Get_count(&status, MPI_PACKED, &bufsize);
-			cout << "rank " << rank << " count2" << endl;
 
 
 			char* buf = new char[bufsize];
 
-			cout << "rank " << rank << " prepare" << endl;
 			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
-			cout << "rank " << rank << " recoit" << endl;
 
-			rng_ = pnl_rng_new();
 			int pos = 0;
+			int type;
 
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->type), 1, MPI_INT, MPI_COMM_WORLD);
+			MPI_Unpack(buf, bufsize, &pos, &(type), 1, MPI_INT, MPI_COMM_WORLD);
+			rng_ = pnl_rng_create(type);
+
 			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT, MPI_COMM_WORLD);
 			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT, MPI_COMM_WORLD);
 			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT, MPI_COMM_WORLD);
@@ -208,14 +270,10 @@ void MonteCarlo::price(double &prix, double &ic)
 
 	if (0 == rank)
 	{
-		cout << "rank " << rank << " : price_master" << endl;
-		MPI_Barrier(MPI_COMM_WORLD);
 		price_master(prix, ic);
 	}
 	else
 	{
-		cout << "rank " << rank << " : price_slave" << endl;
-		MPI_Barrier(MPI_COMM_WORLD);
 		price_slave();
 	}
 }
@@ -316,6 +374,7 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta)
 	PnlVect *ic = pnl_vect_create_from_zero(delta->size);
 
 	pnl_vect_set_all(delta, 0);
+
 	// Moyenne des payoffs
 	for (int j = 0; j < nbSamples_; j++) {
 		// Simulation du path
@@ -338,6 +397,7 @@ void MonteCarlo::delta(const PnlMat *past, double t, PnlVect *delta)
 			pnl_vect_set(sum_square, i, pnl_vect_get(sum_square, i) + pow(payoff, 2));
 		}
 	}
+
 	//Pour l'intervalle de confiance en 0
 	if (t == 0) {
 		for (int i = 0; i < this->mod_->size_; i++) {
