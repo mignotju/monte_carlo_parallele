@@ -113,7 +113,7 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 						&pos, MPI_COMM_WORLD);
 
 				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
-			
+
 				delete(buf);
 			}
 
@@ -168,6 +168,70 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
+/* Méthode sans pack/unpack, où chaque thread créé son générateur avec un id différent,
+* donc les générateurs sont indépendants
+* plus rapide a priori
+*/
+// MonteCarlo::MonteCarlo(Param *P, bool parallel)
+// {
+// 	mod_ = new BlackScholesModel(P);
+// 	P->extract("fd step", fdStep_);
+//
+// 	//Option
+// 	double maturity = 0;
+// 	int nbTimeSteps = 0;
+// 	double strike = 0;
+// 	string type = "";
+// 	P->extract("maturity", maturity);
+// 	P->extract("TimeStep Number", nbTimeSteps);
+// 	P->extract("strike", strike);
+// 	P->extract("option type", type);
+// 	PnlVect* lambda = pnl_vect_create(mod_->size_);
+// 	P->extract("payoff coefficients", lambda, mod_->size_);
+//
+// 	P->extract("Sample Number", nbSamples_);
+//
+// 	if (type.compare("asian") == 0)
+// 	{
+// 		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 	}
+// 	else if (type.compare("basket") == 0)
+// 	{
+// 		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 	}
+// 	else if (type.compare("performance") == 0)
+// 	{
+// 		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+// 	}
+//
+// 	if (parallel)
+// 	{
+// 		int rank,size;
+// 		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+// 		MPI_Comm_size(MPI_COMM_WORLD, &size);
+// 		int seed = time(NULL);
+//
+// 		if (0 == rank)
+// 		{
+// 			rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+// 			pnl_rng_sseed(rng_, time(NULL));
+// 		}
+// 		else
+// 		{
+// 			rng_ = pnl_rng_dcmt_create_id(rank, seed);
+// 			pnl_rng_sseed(rng_, seed);
+// 		}
+// 	}
+// 	else
+// 	{
+// 		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+// 		pnl_rng_sseed(rng_, time(NULL));
+// 	}
+//
+// 	shiftPlus_ = pnl_mat_new();
+// 	shiftMoins_ = pnl_mat_new();
+// 	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
+// }
 
 
 void MonteCarlo::price(double &prix, double &ic)
@@ -199,6 +263,7 @@ void MonteCarlo::price_master(double &prix, double &ic)
 
 	for (int i = 0; i < slaves; i++)
 	{
+
 		MPI_Recv(res, 2, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
 		sum += res[0];
 		sumSq += res[1];
@@ -207,6 +272,7 @@ void MonteCarlo::price_master(double &prix, double &ic)
 	double variance = getVariance(sum, sumSq, 0);
 	prix = getPrice(sum, 0);
 	ic = getIntervalleConfiance(variance);
+
 }
 
 
@@ -219,7 +285,7 @@ void MonteCarlo::price_slave()
 
 	//on calcule le nombre de samples par slave
 	int slaves = size - 1;
-	int samples = nbSamples_;
+	int samples = nbSamples_/slaves;
 	if (slaves == rank)
 	{
 		samples += (nbSamples_%slaves);
