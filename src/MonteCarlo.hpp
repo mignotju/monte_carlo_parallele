@@ -40,7 +40,7 @@ public:
      * @param[out] ic largeur de l'intervalle de confiance
      */
     void price(double &prix, double &ic);
-	
+
 	/**
 	 * Partie du pricing effectuée par le processus maître
 	 *
@@ -55,7 +55,14 @@ public:
 	 * @param[in] samples nombre de simulations que doit réaliser ce processus
 	 */
 	void price_slave();
- 
+
+  void price(double &prix, double &ic, double precision);
+
+  void price_master_precision(double &sum, double &sumSq);
+
+  void price_slave_precision();
+
+
     /**
      * Calcule le prix de l'option à la date t
      *
