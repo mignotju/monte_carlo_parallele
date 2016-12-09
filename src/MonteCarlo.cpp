@@ -302,7 +302,7 @@ void MonteCarlo::price_slave()
 		mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
 		payoff = opt_->payoff(path);
 		res[0] += payoff;
-		res[1] += pow(payoff, 2);
+		res[1] += payoff*payoff;
 	}
 
 	pnl_mat_free(&path);
@@ -310,6 +310,97 @@ void MonteCarlo::price_slave()
 	MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 }
 
+void MonteCarlo::price(double &prix, double &ic, double precision)
+{
+	int rank;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	nbSamples_ = 0;
+
+	if (0 == rank)
+	{
+		price_master_precision(prix, ic, precision);
+	}
+	else
+	{
+		price_slave_precision();
+	}
+}
+
+
+void MonteCarlo::price_master_precision(double &prix, double &ic, double precision)
+{
+	int size;
+  int precision_reached = 0;
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	int slaves = size-1;
+  double sum = 0;
+  double sumSq = 0;
+	double res[2];
+
+	 while (precision_reached != 1) {
+		 nbSamples_ += 1000;
+		for (int i = 0; i < slaves; i++)
+		{
+			MPI_Recv(res, 2, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
+			sum += res[0];
+			sumSq += res[1];
+		}
+
+		double variance = getVariance(sum, sumSq, 0);
+		prix = getPrice(sum, 0);
+		ic = getIntervalleConfiance(variance);
+
+		if (ic < precision) {
+			precision_reached = 1;
+		}
+
+		for (int i = 1; i <= slaves; i++) {
+			MPI_Send(&precision_reached, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+	 }
+
+}
+
+void MonteCarlo::price_slave_precision()
+{
+	int rank, size;
+  int precision_reached = 0;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	//on calcule le nombre de samples par slave
+	int slaves = size - 1;
+	int samples = 1000/slaves;
+	if (slaves == rank)
+	{
+		samples += (1000%slaves);
+	}
+
+	while (precision_reached != 1) {
+
+		double res[2] = {0, 0};
+		double payoff;
+
+		PnlMat *path = pnl_mat_create(opt_->nbTimeSteps_ + 1, mod_->size_);
+
+		for (int i = 0; i < samples; i++)
+		{
+			pnl_mat_set_all(path, 0);
+			mod_->asset(path, opt_->T_, opt_->nbTimeSteps_, rng_);
+			payoff = opt_->payoff(path);
+			res[0] += payoff;
+			res[1] += payoff*payoff;
+		}
+
+		pnl_mat_free(&path);
+
+		MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+
+		MPI_Recv(&precision_reached, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
+	 }
+
+}
 
 
 void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic)
@@ -428,6 +519,8 @@ MonteCarlo::~MonteCarlo()
 
 double MonteCarlo::getVariance(double sum, double sum_square, double t)
 {
+	// cout << "sum : " << sum << endl;
+	// cout << "sumSq : " << sum_square << endl;
 	sum /= nbSamples_;
 	sum = pow(sum, 2);
 
