@@ -313,50 +313,33 @@ void MonteCarlo::price_slave()
 void MonteCarlo::price(double &prix, double &ic, double precision)
 {
 	int rank;
-	bool precision_reached;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	// double variance, prix, ic = 0;
-	double variance = 0;
-	double sum = 0;
-	double sumSq = 0;
 	nbSamples_ = 0;
 
-	while (!precision_reached) {
-		nbSamples_+=10000;
-		if (0 == rank)
-		{
-			price_master_precision(sum, sumSq);
-			variance = getVariance(sum, sumSq, 0);
-			prix = getPrice(sum, 0);
-			ic = getIntervalleConfiance(variance);
-			cout << "prix : " << prix << endl;
-			cout << "ic : " << ic << endl;
-			if (ic < precision) {
-				precision_reached = true;
-			}
-		}
-		else
-		{
-			price_slave_precision();
-		}
-		MPI_Barrier(MPI_COMM_WORLD);
+	if (0 == rank)
+	{
+		price_master_precision(prix, ic, precision);
+	}
+	else
+	{
+		price_slave_precision();
 	}
 }
 
 
-void MonteCarlo::price_master_precision(double &sum, double &sumSq)
+void MonteCarlo::price_master_precision(double &prix, double &ic, double precision)
 {
-	//while precision not found
 	int size;
-	// int precision_reached = 0;
+  int precision_reached = 0;
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 	int slaves = size-1;
-	// double sum = 0;
-	// double sumSq = 0;
+  double sum = 0;
+  double sumSq = 0;
 	double res[2];
 
-	// while (precision_reached != 1) {
+	 while (precision_reached != 1) {
+		 nbSamples_ += 1000;
 		for (int i = 0; i < slaves; i++)
 		{
 			MPI_Recv(res, 2, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
@@ -364,32 +347,38 @@ void MonteCarlo::price_master_precision(double &sum, double &sumSq)
 			sumSq += res[1];
 		}
 
+		double variance = getVariance(sum, sumSq, 0);
+		prix = getPrice(sum, 0);
+		ic = getIntervalleConfiance(variance);
 
+		if (ic < precision) {
+			precision_reached = 1;
+		}
 
-		// for (int i = 1; i <= slaves; i++) {
-		// 	MPI_Send(precision_reached, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-		// }
-	// }
+		for (int i = 1; i <= slaves; i++) {
+			MPI_Send(&precision_reached, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+	 }
 
 }
 
 void MonteCarlo::price_slave_precision()
 {
-	//while precision not found
 	int rank, size;
-	// int precision_reached;
+  int precision_reached = 0;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 	//on calcule le nombre de samples par slave
 	int slaves = size - 1;
-	int samples = 10000/slaves;
+	int samples = 1000/slaves;
 	if (slaves == rank)
 	{
-		samples += (10000%slaves);
+		samples += (1000%slaves);
 	}
 
-	// while (precision_reached != 1) {
+	while (precision_reached != 1) {
+
 		double res[2] = {0, 0};
 		double payoff;
 
@@ -406,12 +395,10 @@ void MonteCarlo::price_slave_precision()
 
 		pnl_mat_free(&path);
 
-		cout << "res0 ; " << res[0] << endl;
-		cout << "res1 ; " << res[1] << endl;
 		MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 
-		// MPI_Recv(precision_reached, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
-	// }
+		MPI_Recv(&precision_reached, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
+	 }
 
 }
 
@@ -532,8 +519,8 @@ MonteCarlo::~MonteCarlo()
 
 double MonteCarlo::getVariance(double sum, double sum_square, double t)
 {
-	cout << "sum : " << sum << endl;
-	cout << "sumSq : " << sum_square << endl;
+	// cout << "sum : " << sum << endl;
+	// cout << "sumSq : " << sum_square << endl;
 	sum /= nbSamples_;
 	sum = pow(sum, 2);
 

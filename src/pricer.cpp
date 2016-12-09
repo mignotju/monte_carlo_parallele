@@ -93,6 +93,7 @@ int main(int argc, char** argv)
 
 		double prix = 0;
 		double ic = 0;
+		bool precision_reached = false;
 
 		sim->monte_carlo->price(prix, ic, precision);
 		MPI_Barrier(MPI_COMM_WORLD);

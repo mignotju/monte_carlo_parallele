@@ -58,7 +58,7 @@ public:
 
   void price(double &prix, double &ic, double precision);
 
-  void price_master_precision(double &sum, double &sumSq);
+  void price_master_precision(double &prix, double &ic, double precision);
 
   void price_slave_precision();
 
