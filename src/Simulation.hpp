@@ -27,6 +27,8 @@ public:
      */
     Simulation(Param *P, bool parallel);
 
+    Simulation(int inutile, Param* P, bool parallel);
+
     /**
      * \brief Destructeur
      */
