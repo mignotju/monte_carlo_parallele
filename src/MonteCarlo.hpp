@@ -30,12 +30,12 @@ public:
 
     MonteCarlo(int inutile, Param* P, bool parallel);
 
-    void packingSizePnlVect(int &bufsize, int &pos, PnlVect* V);
-    void packingPnlVect(char* buf, int bufsize, int pos, PnlVect* V);
-    void unpackingPnlVect(char * buf, int bufsize, int pos, PnlVect* V);
-    void packingSizePnlMat(int &bufsize, int &pos, PnlMat* M);
-    void packingPnlMat(char* buf, int bufsize, int pos, PnlMat* M);
-    void unpackingPnlMat(char * buf, int bufsize, int pos, PnlMat* M);
+    void packingSizePnlVect(int &bufsize, PnlVect* V);
+    void packingPnlVect(char* buf, int bufsize, int &pos, PnlVect* V);
+    void unpackingPnlVect(char* buf, int bufsize, int &pos, PnlVect* &V);
+    // void packingSizePnlMat(int &bufsize, int &pos, PnlMat* M);
+    // void packingPnlMat(char* buf, int bufsize, int pos, PnlMat* M);
+    // void unpackingPnlMat(char * buf, int bufsize, int pos, PnlMat* M);
 
     /**
      * \brief Destructeur

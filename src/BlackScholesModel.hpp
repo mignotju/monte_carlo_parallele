@@ -4,6 +4,7 @@
 #include "pnl/pnl_vector.h"
 #include "pnl/pnl_matrix.h"
 #include "parser.hpp"
+#include <mpi.h>
 
 /*!
  * \file BlackScholesModel.hpp
@@ -20,26 +21,35 @@ public:
     PnlVect *trend; /// pour la probabilité historique
     PnlVect *G; /// vecteur gaussien
     PnlMat *mat_cholesky; //matrice de cholesky
-    
+
     PnlMat * clone_past_; //Variable temporaire utilisée dans asset
     PnlMat *subBlock_;
-    
+
     /**
      * \brief Constructeur par defaut
      */
     BlackScholesModel();
-    
+
     /**
      * \brief Constructeur permettant d'extraire des données d'un fichier
-     * @param P  parseur d'extraction des données 
+     * @param P  parseur d'extraction des données
      */
-    BlackScholesModel(Param *P);
-    
+    BlackScholesModel(Param *P, bool parallel);
+
+    BlackScholesModel(bool slave);
+
+    void packingSizePnlVect(int &bufsize, PnlVect* V);
+    void packingPnlVect(char* buf, int bufsize, int &pos, PnlVect* V);
+    void unpackingPnlVect(char* buf, int bufsize, int &pos, PnlVect* &V);
+    // void packingSizePnlMat(int &bufsize, int &pos, PnlMat* M);
+    // void packingPnlMat(char* buf, int bufsize, int pos, PnlMat* M);
+    // void unpackingPnlMat(char * buf, int bufsize, int pos, PnlMat* M);
+
     /**
      * \brief Destructeur
      */
     ~BlackScholesModel();
-    
+
     /**
      * A utiliser pour les tests
      *
@@ -50,7 +60,7 @@ public:
      * @param[in] G vecteur simulé à la main pour les tests
      */
     void asset(PnlMat *path, double T, int nbTimeSteps, PnlVect *G);
-    
+
     /**
      * Génère une trajectoire du modèle et la stocke dans path
      *
@@ -75,12 +85,12 @@ public:
      */
     void asset(PnlMat *path, double t, double T, int nbTimeSteps,
                PnlRng *rng, const PnlMat *past);
-    
+
     /**
      * Calcule une trajectoire du sous-jacent connaissant le
      * passé jusqu' à la date t en supprimant l'aléatoire par le
      * parametre G
-     * 
+     *
      * @param[out] path  contient une trajectoire du sous-jacent
      * donnée jusqu'à l'instant T par la matrice past
      * @param[in] t  date jusqu'à laquelle on connait la trajectoire.
@@ -108,27 +118,25 @@ public:
      */
     void shiftAsset(PnlMat *shift_path, const PnlMat *path,
                     int d, double h, double t, double timestep);
-    
+
     /**
      * Crée une simulation représentant un marché
-     * 
+     *
      * @param[out] path contient les trajectoires des actifs présents sur le marché
      * @param[in] T  maturité
      * @param[in] H  nombre de rebalancement du portefeuille
      * @param[in] rng  générateur de nombres aléatoires
      */
     void simul_market(PnlMat *path, double T, int H, PnlRng *rng);
-    
+
     /**
      * Crée une simulation représentant un marché pour les tests
      * i.e. sans aléatoire
-     * 
+     *
      * @param[out] path  path contient les trajectoires des actifs présents sur le marché
      * @param[in] T  maturité
      * @param[in] H  nombre de rebalancement du portefeuille
      * @param[in] G  vecteur fixe représentant l'aléatoire pour nos tests
      */
-    void simul_market(PnlMat *path, double T, int H, PnlVect *G);    
+    void simul_market(PnlMat *path, double T, int H, PnlVect *G);
 };
-
-

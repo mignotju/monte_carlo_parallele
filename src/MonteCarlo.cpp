@@ -19,490 +19,150 @@
 
 using namespace std;
 
-void MonteCarlo::packingSizePnlVect(int &bufsize, int &pos, PnlVect* V) {
-	int info, count;
-	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
-	// if (info) return (info);
+void MonteCarlo::packingSizePnlVect(int &bufsize, PnlVect* V) {
+	int count;
+	MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
 	bufsize += count;
-	info=MPI_Pack_size(V->size,MPI_DOUBLE,MPI_COMM_WORLD,&count);
-	// if (info) return (info);
+	MPI_Pack_size(V->size,MPI_DOUBLE,MPI_COMM_WORLD,&count);
 	bufsize += count;
 }
 
-void MonteCarlo::packingPnlVect(char* buf, int bufsize, int pos, PnlVect* V) {
-	int info, count;
-	info=MPI_Pack(&(V->size),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Pack(V->array,V->size,MPI_DOUBLE,buf,bufsize,&pos,MPI_COMM_WORLD);
+void MonteCarlo::packingPnlVect(char* buf, int bufsize, int &pos, PnlVect* V) {
+	MPI_Pack(&(V->size), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+	MPI_Pack(V->array, V->size, MPI_DOUBLE, buf, bufsize, &pos, MPI_COMM_WORLD);
 }
 
-void MonteCarlo::unpackingPnlVect(char * buf, int bufsize, int pos, PnlVect* V)  {
-	int n, info;
-	// PnlVect* V = pnl_vect_new();
-	info=MPI_Unpack(buf,bufsize,&pos,&n,1,MPI_INT,MPI_COMM_WORLD);
-	// if (info) return info;
-	pnl_vect_resize(V, n);
-	info=MPI_Unpack(buf,bufsize,&pos,V->array,n,MPI_DOUBLE,MPI_COMM_WORLD);
-	// if (info) return info;
+void MonteCarlo::unpackingPnlVect(char* buf, int bufsize, int &pos, PnlVect* &V)  {
+	int n;
+	MPI_Unpack(buf,bufsize, &pos,&n,1,MPI_INT,MPI_COMM_WORLD);
+	V = pnl_vect_create_from_zero(n);
+	MPI_Unpack(buf,bufsize, &pos,V->array,n,MPI_DOUBLE,MPI_COMM_WORLD);
 }
 
-void MonteCarlo::packingSizePnlMat(int &bufsize, int &pos, PnlMat* M) {
-	int info, count;
-	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
-	// if (info) return (info);
-	bufsize += count;
-	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
-	// if (info) return (info);
-	bufsize += count;
-	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
-	// if (info) return (info);
-	bufsize += count;
-	info=MPI_Pack_size(M->mn,MPI_DOUBLE,MPI_COMM_WORLD,&count);
-	// if (info) return (info);
-	bufsize += count;
-}
 
-void MonteCarlo::packingPnlMat(char* buf, int bufsize, int pos, PnlMat* M) {
-	int info;
-	info=MPI_Pack(&(M->n),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Pack(&(M->m),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Pack(&(M->mn),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Pack(M->array,M->mn,MPI_DOUBLE,buf,bufsize,&pos,MPI_COMM_WORLD);
-}
-
-void MonteCarlo::unpackingPnlMat(char * buf, int bufsize, int pos, PnlMat* M)  {
-	int n,m, info;
-	info=MPI_Unpack(buf,bufsize,&pos,&n,1,MPI_INT,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Unpack(buf,bufsize,&pos,&m,1,MPI_INT,MPI_COMM_WORLD);
-	// if (info) return info;
-	info=MPI_Unpack(buf,bufsize,&pos,&(M->mn),1,MPI_INT,MPI_COMM_WORLD);
-	// if (info) return info;
-	pnl_mat_resize(M,n,m);
-	info=MPI_Unpack(buf,bufsize,&pos,M->array,M->mn,MPI_DOUBLE,MPI_COMM_WORLD);
-	// if (info) return info;
-}
-
-MonteCarlo::MonteCarlo(Param *P, bool parallel)
-{
-	mod_ = new BlackScholesModel(P);
-
-	if (parallel)
-	{
-		int rank,size;
-		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-		MPI_Comm_size(MPI_COMM_WORLD, &size);
-		int bufsize=0, pos=0, count;
-
-		/*Getting pack size*/
-		MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-		bufsize += count;
-		MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
-		bufsize += count;
-		MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
-		bufsize += count;
-		packingSizePnlVect(bufsize, pos, mod_->sigma_);
-		packingSizePnlVect(bufsize, pos, mod_->spot_);
-		packingSizePnlVect(bufsize, pos, mod_->trend);
-		packingSizePnlVect(bufsize, pos, mod_->G);
-		packingSizePnlMat(bufsize, pos, mod_->mat_cholesky);
-		packingSizePnlMat(bufsize, pos, mod_->clone_past_);
-		packingSizePnlMat(bufsize, pos, mod_->subBlock_);
-
-		/*Creating pack*/
-		char* buf = new char[bufsize];
-
-		MPI_Pack(&(mod_->size_), 1, MPI_INT, buf, bufsize,
-				&pos, MPI_COMM_WORLD);
-		MPI_Pack(&(mod_->r_), 1, MPI_DOUBLE, buf, bufsize,
-				&pos, MPI_COMM_WORLD);
-		MPI_Pack(&(mod_->rho_), 1, MPI_DOUBLE, buf, bufsize,
-				&pos, MPI_COMM_WORLD);
-		packingPnlVect(buf, bufsize, pos, mod_->sigma_);
-		packingPnlVect(buf, bufsize, pos, mod_->spot_);
-		packingPnlVect(buf, bufsize, pos, mod_->trend);
-		packingPnlVect(buf, bufsize, pos, mod_->G);
-		packingPnlMat(buf, bufsize, pos, mod_->mat_cholesky);
-		packingPnlMat(buf, bufsize, pos, mod_->clone_past_);
-		packingPnlMat(buf, bufsize, pos, mod_->subBlock_);
-
-		for (int i = 1; i <= size; i++) {
-			MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
-		}
-
-		delete(buf);
-	}
-
-	P->extract("fd step", fdStep_);
-
-	//Option
-	double maturity = 0;
-	int nbTimeSteps = 0;
-	double strike = 0;
-	string type = "";
-	P->extract("maturity", maturity);
-	P->extract("TimeStep Number", nbTimeSteps);
-	P->extract("strike", strike);
-	P->extract("option type", type);
-	PnlVect* lambda = pnl_vect_create(mod_->size_);
-	P->extract("payoff coefficients", lambda, mod_->size_);
-
-	P->extract("Sample Number", nbSamples_);
-
-	if (type.compare("asian") == 0)
-	{
-		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-	}
-	else if (type.compare("basket") == 0)
-	{
-		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-	}
-	else if (type.compare("performance") == 0)
-	{
-		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
-	}
-
-	if (parallel)
-	{
-		int rank,size;
-		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-		MPI_Comm_size(MPI_COMM_WORLD, &size);
-		int seed = time(NULL);
-
-		if (0 == rank)
-		{
-			int count;
-			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
-			while (count != size)
-			{
-				cout << "Nombre de générateurs créés incorrects !" << endl;
-				array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
-			}
-
-			for (int i = 1; i < count; i++)
-			{
-				int count, bufsize=0, pos=0;
-				PnlRng* my_rng = array_rng[i];
-				pnl_rng_sseed(my_rng, seed);
-
-				/*Getting pack size*/
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
-				bufsize += count;
-
-				/*Creating pack*/
-				char* buf = new char[bufsize];
-
-				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->counter), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->has_gauss), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->gauss), 1, MPI_DOUBLE, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-
-				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
-
-				delete(buf);
-			}
-
-			rng_ = array_rng[0];
-			pnl_rng_sseed(rng_, seed);
-		}
-		else
-		{
-			int bufsize;
-			MPI_Status status;
-
-			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
-			MPI_Get_count(&status, MPI_PACKED, &bufsize);
-
-			char* buf = new char[bufsize];
-
-			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
-
-			int pos = 0;
-			int type;
-
-			MPI_Unpack(buf, bufsize, &pos, &(type), 1, MPI_INT, MPI_COMM_WORLD);
-			rng_ = pnl_rng_create(type);
-
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->has_gauss), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->gauss), 1, MPI_DOUBLE,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->size_state), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, rng_->state, rng_->size_state, MPI_BYTE,
-					MPI_COMM_WORLD);
-
-			pnl_rng_sseed(rng_, seed);
-			delete(buf);
-		}
-	}
-	else
-	{
-		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-		pnl_rng_sseed(rng_, time(NULL));
-	}
-
-	shiftPlus_ = pnl_mat_new();
-	shiftMoins_ = pnl_mat_new();
-	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
-}
-
-MonteCarlo::MonteCarlo(int inutile, Param *P, bool parallel)
-{
-	int rank,size;
-	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-	MPI_Comm_size(MPI_COMM_WORLD, &size);
-	mod_ = new BlackScholesModel();
-	int bufsize;
-	MPI_Status status;
-
-	MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
-	MPI_Get_count(&status, MPI_PACKED, &bufsize);
-
-	char* buf = new char[bufsize];
-
-	MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
-
-	int pos = 0;
-
-	MPI_Unpack(buf, bufsize, &pos, &(mod_->size_), 1, MPI_INT,
-	 		MPI_COMM_WORLD);
-	MPI_Unpack(buf, bufsize, &pos, &(mod_->r_), 1, MPI_DOUBLE,
-			MPI_COMM_WORLD);
-	MPI_Unpack(buf, bufsize, &pos, &(mod_->rho_), 1, MPI_DOUBLE,
-			MPI_COMM_WORLD);
-	unpackingPnlVect(buf, bufsize, pos, mod_->sigma_);
-	unpackingPnlVect(buf, bufsize, pos, mod_->spot_);
-	unpackingPnlVect(buf, bufsize, pos, mod_->trend);
-	unpackingPnlVect(buf, bufsize, pos, mod_->G);
-	unpackingPnlMat(buf, bufsize, pos, mod_->mat_cholesky);
-	unpackingPnlMat(buf, bufsize, pos, mod_->clone_past_);
-	unpackingPnlMat(buf, bufsize, pos, mod_->subBlock_);
-
-pnl_vect_print(mod_->spot_);
-	cout << "je suis : " << rank << " et je contiens : " <<
-		"size : " <<mod_->size_ << " et  r : " << mod_->r_ <<
-		" et rho : " << mod_->rho_ << " et sigma : " << endl;
-		pnl_vect_print(mod_->sigma_);
-
-	delete(buf);
-	//mod_ = new BlackScholesModel(P);
-	P->extract("fd step", fdStep_);
-
-	//Option
-	double maturity = 0;
-	int nbTimeSteps = 0;
-	double strike = 0;
-	string type = "";
-	P->extract("maturity", maturity);
-	P->extract("TimeStep Number", nbTimeSteps);
-	P->extract("strike", strike);
-	P->extract("option type", type);
-	PnlVect* lambda = pnl_vect_create(mod_->size_);
-	P->extract("payoff coefficients", lambda, mod_->size_);
-
-	P->extract("Sample Number", nbSamples_);
-
-	if (type.compare("asian") == 0)
-	{
-		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-	}
-	else if (type.compare("basket") == 0)
-	{
-		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-	}
-	else if (type.compare("performance") == 0)
-	{
-		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
-	}
-
-	if (parallel)
-	{
-		// int rank,size;
-		// MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-		// MPI_Comm_size(MPI_COMM_WORLD, &size);
-		int seed = time(NULL);
-
-		if (0 == rank)
-		{
-			int count;
-			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
-			while (count != size)
-			{
-				cout << "Nombre de générateurs créés incorrects !" << endl;
-				array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
-			}
-
-			for (int i = 1; i < count; i++)
-			{
-				int count, bufsize=0, pos=0;
-				PnlRng* my_rng = array_rng[i];
-				pnl_rng_sseed(my_rng, seed);
-
-				/*Getting pack size*/
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
-				bufsize += count;
-
-				/*Creating pack*/
-				char* buf = new char[bufsize];
-
-				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->counter), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->has_gauss), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->gauss), 1, MPI_DOUBLE, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize,
-						&pos, MPI_COMM_WORLD);
-
-				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
-
-				delete(buf);
-			}
-
-			rng_ = array_rng[0];
-			pnl_rng_sseed(rng_, seed);
-		}
-		else
-		{
-			int bufsize;
-			MPI_Status status;
-
-			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
-			MPI_Get_count(&status, MPI_PACKED, &bufsize);
-
-			char* buf = new char[bufsize];
-
-			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
-
-			int pos = 0;
-			int type;
-
-			MPI_Unpack(buf, bufsize, &pos, &(type), 1, MPI_INT, MPI_COMM_WORLD);
-			rng_ = pnl_rng_create(type);
-
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->has_gauss), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->gauss), 1, MPI_DOUBLE,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, &(rng_->size_state), 1, MPI_INT,
-					MPI_COMM_WORLD);
-			MPI_Unpack(buf, bufsize, &pos, rng_->state, rng_->size_state, MPI_BYTE,
-					MPI_COMM_WORLD);
-
-			pnl_rng_sseed(rng_, seed);
-			delete(buf);
-		}
-	}
-	else
-	{
-		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-		pnl_rng_sseed(rng_, time(NULL));
-	}
-
-	shiftPlus_ = pnl_mat_new();
-	shiftMoins_ = pnl_mat_new();
-	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
-}
-
-/* Méthode sans pack/unpack, où chaque thread créé son générateur avec un id différent,
-* donc les générateurs sont indépendants
-* plus rapide a priori
-*/
 // MonteCarlo::MonteCarlo(Param *P, bool parallel)
 // {
-// 	mod_ = new BlackScholesModel(P);
-// 	P->extract("fd step", fdStep_);
+// 	if (parallel) {
+// 		int rank,size;
+// 		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+// 		MPI_Comm_size(MPI_COMM_WORLD, &size);
 //
-// 	//Option
-// 	double maturity = 0;
-// 	int nbTimeSteps = 0;
-// 	double strike = 0;
-// 	string type = "";
-// 	P->extract("maturity", maturity);
-// 	P->extract("TimeStep Number", nbTimeSteps);
-// 	P->extract("strike", strike);
-// 	P->extract("option type", type);
-// 	PnlVect* lambda = pnl_vect_create(mod_->size_);
-// 	P->extract("payoff coefficients", lambda, mod_->size_);
+// 		if (0 == rank) {
+// 			mod_ = new BlackScholesModel(P, true);
 //
-// 	P->extract("Sample Number", nbSamples_);
+// 			P->extract("fd step", fdStep_);
 //
-// 	if (type.compare("asian") == 0)
-// 	{
-// 		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 			//Option
+// 			double maturity = 0;
+// 			int nbTimeSteps = 0;
+// 			double strike = 0;
+// 			string type = "";
+// 			P->extract("maturity", maturity);
+// 			P->extract("TimeStep Number", nbTimeSteps);
+// 			P->extract("strike", strike);
+// 			P->extract("option type", type);
+// 			PnlVect* lambda = pnl_vect_create(mod_->size_);
+// 			P->extract("payoff coefficients", lambda, mod_->size_);
+//
+// 			P->extract("Sample Number", nbSamples_);
+//
+// 			/*Getting pack size*/
+// 			int bufsize=0, pos=0, count;
+// 			MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+// 			bufsize += count;
+// 			MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 			bufsize += count;
+// 			MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+// 			bufsize += count;
+// 			MPI_Pack_size(sizeof(type), MPI_BYTE, MPI_COMM_WORLD, &count);
+// 			bufsize += count;
+// 			packingSizePnlVect(bufsize, lambda);
+// 			MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 			bufsize += count;
+//
+// 			/*Creating pack*/
+// 			char* buf = new char[bufsize];
+//
+// 			MPI_Pack(&(maturity), 1, MPI_DOUBLE, buf, bufsize,
+// 					&pos, MPI_COMM_WORLD);
+// 			MPI_Pack(&(nbTimeSteps), 1, MPI_INT, buf, bufsize,
+// 					&pos, MPI_COMM_WORLD);
+// 			MPI_Pack(&(strike), 1, MPI_DOUBLE, buf, bufsize,
+// 					&pos, MPI_COMM_WORLD);
+// 			MPI_Pack(&(type), sizeof(type), MPI_BYTE, buf, bufsize,
+// 					&pos, MPI_COMM_WORLD);
+// 			packingPnlVect(buf, bufsize, pos, lambda);
+// 			MPI_Pack(&(nbSamples_), 1, MPI_INT, buf, bufsize,
+// 					&pos, MPI_COMM_WORLD);
+//
+//
+// 			for (int i = 1; i < size; i++) {
+// 				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+// 			}
+// 			delete(buf);
+//
+//
+// 			if (type.compare("asian") == 0)
+// 			{
+// 				opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 			}
+// 			else if (type.compare("basket") == 0)
+// 			{
+// 				opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 			}
+// 			else if (type.compare("performance") == 0)
+// 			{
+// 				opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+// 			}
+//
+// 		} else {
+// 			mod_ = new BlackScholesModel(true);
+//
+// 			int bufsize;
+// 	  	MPI_Status status;
+//
+// 	  	MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+// 	  	MPI_Get_count(&status, MPI_PACKED, &bufsize);
+//
+// 	  	char* buf = new char[bufsize];
+//
+// 	  	MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+//
+// 	  	int pos = 0;
+// 			double maturity = 0;
+// 			int nbTimeSteps = 0;
+// 			double strike = 0;
+// 			string type = "";
+// 			PnlVect* lambda = pnl_vect_create(mod_->size_);
+//
+// 	  	MPI_Unpack(buf, bufsize, &pos, &(maturity), 1, MPI_DOUBLE,
+// 	  	 		MPI_COMM_WORLD);
+// 	  	MPI_Unpack(buf, bufsize, &pos, &(nbTimeSteps), 1, MPI_INT,
+// 	  			MPI_COMM_WORLD);
+// 	  	MPI_Unpack(buf, bufsize, &pos, &(strike), 1, MPI_DOUBLE,
+// 	  			MPI_COMM_WORLD);
+// 	  	unpackingPnlVect(buf, bufsize, pos, lambda);
+//
+// 			delete(buf);
+//
+// 			if (type.compare("asian") == 0)
+// 			{
+// 				opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 			}
+// 			else if (type.compare("basket") == 0)
+// 			{
+// 				opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+// 			}
+// 			else if (type.compare("performance") == 0)
+// 			{
+// 				opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+// 			}
+// 		}
+//
+// 	} else {
+// 		mod_ = new BlackScholesModel(P, false);
 // 	}
-// 	else if (type.compare("basket") == 0)
-// 	{
-// 		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-// 	}
-// 	else if (type.compare("performance") == 0)
-// 	{
-// 		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
-// 	}
+//
 //
 // 	if (parallel)
 // 	{
@@ -513,13 +173,101 @@ pnl_vect_print(mod_->spot_);
 //
 // 		if (0 == rank)
 // 		{
-// 			rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-// 			pnl_rng_sseed(rng_, time(NULL));
+// 			int count;
+// 			PnlRng ** array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
+// 			while (count != size)
+// 			{
+// 				cout << "Nombre de générateurs créés incorrects !" << endl;
+// 				array_rng = pnl_rng_dcmt_create_array_id(1, size, seed, &count);
+// 			}
+//
+// 			for (int i = 1; i < count; i++)
+// 			{
+// 				int count, bufsize=0, pos=0;
+// 				PnlRng* my_rng = array_rng[i];
+// 				pnl_rng_sseed(my_rng, seed);
+//
+// 				/*Getting pack size*/
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+// 				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
+// 				bufsize += count;
+//
+// 				/*Creating pack*/
+// 				char* buf = new char[bufsize];
+//
+// 				MPI_Pack(&(my_rng->type), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->rand_or_quasi), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->dimension), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->counter), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->has_gauss), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->gauss), 1, MPI_DOUBLE, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(&(my_rng->size_state), 1, MPI_INT, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+// 				MPI_Pack(my_rng->state, my_rng->size_state, MPI_BYTE, buf, bufsize,
+// 						&pos, MPI_COMM_WORLD);
+//
+// 				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+//
+// 				delete(buf);
+// 			}
+//
+// 			rng_ = array_rng[0];
+// 			pnl_rng_sseed(rng_, seed);
 // 		}
 // 		else
 // 		{
-// 			rng_ = pnl_rng_dcmt_create_id(rank, seed);
+// 			int bufsize;
+// 			MPI_Status status;
+//
+// 			MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+// 			MPI_Get_count(&status, MPI_PACKED, &bufsize);
+//
+// 			char* buf = new char[bufsize];
+//
+// 			MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+//
+// 			int pos = 0;
+// 			int type;
+//
+// 			MPI_Unpack(buf, bufsize, &pos, &(type), 1, MPI_INT, MPI_COMM_WORLD);
+// 			rng_ = pnl_rng_create(type);
+//
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->rand_or_quasi), 1, MPI_INT,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->dimension), 1, MPI_INT,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->counter), 1, MPI_INT,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->has_gauss), 1, MPI_INT,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->gauss), 1, MPI_DOUBLE,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, &(rng_->size_state), 1, MPI_INT,
+// 					MPI_COMM_WORLD);
+// 			MPI_Unpack(buf, bufsize, &pos, rng_->state, rng_->size_state, MPI_BYTE,
+// 					MPI_COMM_WORLD);
+//
 // 			pnl_rng_sseed(rng_, seed);
+// 			delete(buf);
 // 		}
 // 	}
 // 	else
@@ -532,6 +280,191 @@ pnl_vect_print(mod_->spot_);
 // 	shiftMoins_ = pnl_mat_new();
 // 	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 // }
+//
+
+//--------------------------------------------------------------------------------------------------------------------------------------
+
+
+/* Méthode sans pack/unpack, où chaque thread créé son générateur avec un id différent,
+* donc les générateurs sont indépendants
+* plus rapide a priori
+*/
+MonteCarlo::MonteCarlo(Param *P, bool parallel)
+{
+	if (parallel) {
+		int rank,size;
+		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+		MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+		if (0 == rank) {
+			mod_ = new BlackScholesModel(P, true);
+
+			P->extract("fd step", fdStep_);
+
+			//Option
+			double maturity = 0;
+			int nbTimeSteps = 0;
+			double strike = 0;
+			string type = "";
+			int type_length;
+			P->extract("maturity", maturity);
+			P->extract("TimeStep Number", nbTimeSteps);
+			P->extract("strike", strike);
+			P->extract("option type", type);
+			type_length = type.size() + 1;
+			PnlVect* lambda = pnl_vect_create(mod_->size_);
+			P->extract("payoff coefficients", lambda, mod_->size_);
+
+			P->extract("Sample Number", nbSamples_);
+
+			/*Getting pack size*/
+			int bufsize=0, pos=0, count;
+			MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+			bufsize += count;
+			MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+			bufsize += count;
+			MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+			bufsize += count;
+			MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+			bufsize += count;
+			MPI_Pack_size(type_length, MPI_CHAR, MPI_COMM_WORLD, &count);
+			bufsize += count;
+			packingSizePnlVect(bufsize, lambda);
+			MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+			bufsize += count;
+
+			/*Creating pack*/
+			char* buf = new char[bufsize];
+
+			MPI_Pack(&(maturity), 1, MPI_DOUBLE, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+			MPI_Pack(&(nbTimeSteps), 1, MPI_INT, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+			MPI_Pack(&(strike), 1, MPI_DOUBLE, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+			MPI_Pack(&(type_length), 1, MPI_INT, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+			MPI_Pack(&(type), type_length, MPI_CHAR, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+			packingPnlVect(buf, bufsize, pos, lambda);
+			MPI_Pack(&(nbSamples_), 1, MPI_INT, buf, bufsize,
+					&pos, MPI_COMM_WORLD);
+
+
+			for (int i = 1; i < size; i++) {
+				MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+			}
+			delete(buf);
+
+
+			if (type.compare("asian") == 0)
+			{
+				opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+			}
+			else if (type.compare("basket") == 0)
+			{
+				opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+			}
+			else if (type.compare("performance") == 0)
+			{
+				opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+			}
+
+		} else {
+			mod_ = new BlackScholesModel(true);
+
+			int bufsize;
+	  	MPI_Status status;
+
+	  	MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+	  	MPI_Get_count(&status, MPI_PACKED, &bufsize);
+
+	  	char* buf = new char[bufsize];
+
+	  	MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+
+	  	int pos = 0;
+			double maturity = 0;
+			int nbTimeSteps = 0;
+			double strike = 0;
+			int type_length = 0;
+			PnlVect* lambda = pnl_vect_create(mod_->size_);
+
+	  	MPI_Unpack(buf, bufsize, &pos, &(maturity), 1, MPI_DOUBLE,
+	  	 		MPI_COMM_WORLD);
+			cout << "maturity : " << maturity << endl;
+	  	MPI_Unpack(buf, bufsize, &pos, &(nbTimeSteps), 1, MPI_INT,
+	  			MPI_COMM_WORLD);
+					cout << "nbTimesSteps : " << nbTimeSteps << endl;
+
+	  	MPI_Unpack(buf, bufsize, &pos, &(strike), 1, MPI_DOUBLE,
+	  			MPI_COMM_WORLD);
+					cout << "strike : " << strike << endl;
+			MPI_Unpack(buf, bufsize, &pos, &(type_length), 1, MPI_INT,
+			  	MPI_COMM_WORLD);
+			cout << "type length : " << type_length << endl;
+			//char type[type_length];
+			char* type;
+			type = (char*) malloc(type_length*sizeof(char));
+			MPI_Unpack(buf, bufsize, &pos, type, type_length, MPI_CHAR,
+			  	MPI_COMM_WORLD);
+			for (int i = 0; i < type_length; i++) {
+				cout << " " << type[i] << " ";
+			}
+			cout << "type : " << type << endl;
+			// string type_s = string s(type);
+	  	unpackingPnlVect(buf, bufsize, pos, lambda);
+			pnl_vect_print(lambda);
+
+			delete(buf);
+
+			// if (type_s.compare("asian") == 0)
+			// {
+			// 	opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+			// }
+			// else if (type_s.compare("basket") == 0)
+			// {
+			// 	opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
+			// }
+			// else if (type_s.compare("performance") == 0)
+			// {
+			// 	opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
+			// }
+		}
+
+	} else {
+		mod_ = new BlackScholesModel(P, false);
+	}
+
+
+	if (parallel)
+	{
+		int rank,size;
+		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+		MPI_Comm_size(MPI_COMM_WORLD, &size);
+		int seed = time(NULL);
+
+		if (0 == rank)
+		{
+			rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+			pnl_rng_sseed(rng_, time(NULL));
+		}
+		else
+		{
+			rng_ = pnl_rng_dcmt_create_id(rank, seed);
+			pnl_rng_sseed(rng_, seed);
+		}
+	}
+	else
+	{
+		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
+		pnl_rng_sseed(rng_, time(NULL));
+	}
+
+	shiftPlus_ = pnl_mat_new();
+	shiftMoins_ = pnl_mat_new();
+	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
+}
 
 
 void MonteCarlo::price(double &prix, double &ic)

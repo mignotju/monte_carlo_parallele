@@ -54,20 +54,21 @@ int main(int argc, char** argv)
 	{
 		Simulation *sim;
 		char *infile = argv[1];
-		Param *P = new Parser(infile);
-		if (0 == rank) {
-
-
-			sim = new Simulation(P, true);
-		} else {
-			sim = new Simulation(1, P, true);
+		Param *P;
+		int rank;
+		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+		if (0 == rank)
+		{
+			P = new Parser(infile);
 		}
-		MPI_Barrier(MPI_COMM_WORLD);
-			double prix = 0;
-			double ic = 0;
 
-			sim->monte_carlo->price(prix, ic);
-			MPI_Barrier(MPI_COMM_WORLD);
+		sim = new Simulation(P, true);
+		MPI_Barrier(MPI_COMM_WORLD);
+		double prix = 0;
+		double ic = 0;
+
+		sim->monte_carlo->price(prix, ic);
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		if (0 == rank)
 		{

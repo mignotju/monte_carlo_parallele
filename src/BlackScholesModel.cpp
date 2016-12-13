@@ -1,9 +1,69 @@
 #include "BlackScholesModel.hpp"
-#include <math.h> 
+#include <math.h>
 #include <iostream>
 #include "parser.hpp"
 
 using namespace std;
+
+void BlackScholesModel::packingSizePnlVect(int &bufsize, PnlVect* V) {
+	int count;
+	MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
+	bufsize += count;
+	MPI_Pack_size(V->size,MPI_DOUBLE,MPI_COMM_WORLD,&count);
+	bufsize += count;
+}
+
+void BlackScholesModel::packingPnlVect(char* buf, int bufsize, int &pos, PnlVect* V) {
+	MPI_Pack(&(V->size), 1, MPI_INT, buf, bufsize, &pos, MPI_COMM_WORLD);
+	MPI_Pack(V->array, V->size, MPI_DOUBLE, buf, bufsize, &pos, MPI_COMM_WORLD);
+}
+
+void BlackScholesModel::unpackingPnlVect(char* buf, int bufsize, int &pos, PnlVect* &V)  {
+	int n;
+	MPI_Unpack(buf,bufsize, &pos,&n,1,MPI_INT,MPI_COMM_WORLD);
+	V = pnl_vect_create_from_zero(n);
+	MPI_Unpack(buf,bufsize, &pos,V->array,n,MPI_DOUBLE,MPI_COMM_WORLD);
+}
+
+// void BlackScholesModel::packingSizePnlMat(int &bufsize, int &pos, PnlMat* M) {
+// 	int info, count;
+// 	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
+// 	// if (info) return (info);
+// 	bufsize += count;
+// 	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
+// 	// if (info) return (info);
+// 	bufsize += count;
+// 	info=MPI_Pack_size(1,MPI_INT, MPI_COMM_WORLD,&count);
+// 	// if (info) return (info);
+// 	bufsize += count;
+// 	info=MPI_Pack_size(M->mn,MPI_DOUBLE,MPI_COMM_WORLD,&count);
+// 	// if (info) return (info);
+// 	bufsize += count;
+// }
+//
+// void BlackScholesModel::packingPnlMat(char* buf, int bufsize, int pos, PnlMat* M) {
+// 	int info;
+// 	info=MPI_Pack(&(M->n),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	info=MPI_Pack(&(M->m),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	info=MPI_Pack(&(M->mn),1,MPI_INT,buf,bufsize,&pos,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	info=MPI_Pack(M->array,M->mn,MPI_DOUBLE,buf,bufsize,&pos,MPI_COMM_WORLD);
+// }
+//
+// void BlackScholesModel::unpackingPnlMat(char * buf, int bufsize, int pos, PnlMat* M)  {
+// 	int n,m, info;
+// 	info=MPI_Unpack(buf,bufsize,&pos,&n,1,MPI_INT,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	info=MPI_Unpack(buf,bufsize,&pos,&m,1,MPI_INT,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	info=MPI_Unpack(buf,bufsize,&pos,&(M->mn),1,MPI_INT,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// 	pnl_mat_resize(M,n,m);
+// 	info=MPI_Unpack(buf,bufsize,&pos,M->array,M->mn,MPI_DOUBLE,MPI_COMM_WORLD);
+// 	// if (info) return info;
+// }
 
 BlackScholesModel::BlackScholesModel() {
     size_ = 3;
@@ -18,13 +78,13 @@ BlackScholesModel::BlackScholesModel() {
     mat_cholesky = pnl_mat_create_from_scalar(size_, size_, rho_);
     pnl_mat_set_diag(mat_cholesky, 1, 0);
     pnl_mat_chol(mat_cholesky);
-    
+
     clone_past_ = pnl_mat_new();
     subBlock_ = pnl_mat_new();
 
 }
 
-BlackScholesModel::BlackScholesModel(Param *P) {
+BlackScholesModel::BlackScholesModel(Param *P, bool parallel) {
 
     G = pnl_vect_new();
     P->extract("option size", size_);
@@ -34,13 +94,93 @@ BlackScholesModel::BlackScholesModel(Param *P) {
     P->extract("correlation", rho_);
     P->extract("trend", trend, size_);
 
+    if (parallel) {
+
+      int size;
+      MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+      /*Getting pack size*/
+      int bufsize=0, pos=0, count;
+      MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+  		bufsize += count;
+  		MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+  		bufsize += count;
+  		MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
+  		bufsize += count;
+
+      packingSizePnlVect(bufsize, sigma_);
+  		packingSizePnlVect(bufsize, spot_);
+  		packingSizePnlVect(bufsize, trend);
+
+      /*Creating pack*/
+  		char* buf = new char[bufsize];
+
+  		MPI_Pack(&(size_), 1, MPI_INT, buf, bufsize,
+  				&pos, MPI_COMM_WORLD);
+  		MPI_Pack(&(r_), 1, MPI_DOUBLE, buf, bufsize,
+  				&pos, MPI_COMM_WORLD);
+  		MPI_Pack(&(rho_), 1, MPI_DOUBLE, buf, bufsize,
+  				&pos, MPI_COMM_WORLD);
+
+  		packingPnlVect(buf, bufsize, pos, sigma_);
+  		packingPnlVect(buf, bufsize, pos, spot_);
+  		packingPnlVect(buf, bufsize, pos, trend);
+
+      for (int i = 1; i < size; i++) {
+  	 		MPI_Send(buf, bufsize, MPI_PACKED, i, 0, MPI_COMM_WORLD);
+  		}
+      delete(buf);
+    }
+
     //Calculation of the Cholesky matrix of the correlation matrix
     mat_cholesky = pnl_mat_create_from_scalar(size_, size_, rho_);
     pnl_mat_set_diag(mat_cholesky, 1, 0);
     pnl_mat_chol(mat_cholesky);
-    
+
     clone_past_ = pnl_mat_new();
     subBlock_ = pnl_mat_new();
+}
+
+BlackScholesModel::BlackScholesModel(bool slave) {
+  if (slave) {
+
+    int bufsize;
+  	MPI_Status status;
+
+  	MPI_Probe(0, 0, MPI_COMM_WORLD, &status);
+  	MPI_Get_count(&status, MPI_PACKED, &bufsize);
+
+  	char* buf = new char[bufsize];
+
+  	MPI_Recv(buf, bufsize, MPI_PACKED, 0, 0, MPI_COMM_WORLD, NULL);
+
+  	int pos = 0;
+
+  	MPI_Unpack(buf, bufsize, &pos, &(size_), 1, MPI_INT,
+  	 		MPI_COMM_WORLD);
+  	MPI_Unpack(buf, bufsize, &pos, &(r_), 1, MPI_DOUBLE,
+  			MPI_COMM_WORLD);
+  	MPI_Unpack(buf, bufsize, &pos, &(rho_), 1, MPI_DOUBLE,
+  			MPI_COMM_WORLD);
+  	unpackingPnlVect(buf, bufsize, pos, sigma_);
+		pnl_vect_print(sigma_);
+  	unpackingPnlVect(buf, bufsize, pos, spot_);
+  	unpackingPnlVect(buf, bufsize, pos, trend);
+
+
+  	pnl_vect_print(spot_);
+		pnl_vect_print(trend);
+
+  	delete(buf);
+
+    //Calculation of the Cholesky matrix of the correlation matrix
+    mat_cholesky = pnl_mat_create_from_scalar(size_, size_, rho_);
+    pnl_mat_set_diag(mat_cholesky, 1, 0);
+    pnl_mat_chol(mat_cholesky);
+
+    clone_past_ = pnl_mat_new();
+    subBlock_ = pnl_mat_new();
+  }
 }
 
 void BlackScholesModel::asset(PnlMat* path, double T, int nbTimeSteps, PnlRng* rng) {

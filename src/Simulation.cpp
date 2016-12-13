@@ -10,18 +10,23 @@ using namespace std;
 Simulation::Simulation(Param *P, bool parallel) {
     rng = pnl_rng_create(PNL_RNG_MERSENNE);
     pnl_rng_sseed(rng, time(NULL));
-    //P->extract("hedging dates number", nbTimeStepH);
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (0 == rank) {
+      P->extract("hedging dates number", nbTimeStepH);
+    }
+
     monte_carlo = new MonteCarlo(P, parallel);
-
 }
-
-Simulation::Simulation(int inutile, Param* P, bool parallel) {
-    rng = pnl_rng_create(PNL_RNG_MERSENNE);
-    pnl_rng_sseed(rng, time(NULL));
-    //P->extract("hedging dates number", nbTimeStepH);
-    monte_carlo = new MonteCarlo(1, P, parallel);
-
-}
+//
+// Simulation::Simulation(int inutile, Param* P, bool parallel) {
+//     rng = pnl_rng_create(PNL_RNG_MERSENNE);
+//     pnl_rng_sseed(rng, time(NULL));
+//     //P->extract("hedging dates number", nbTimeStepH);
+//     monte_carlo = new MonteCarlo(1, P, parallel);
+//
+// }
 
 void Simulation::simu_couverture(PnlVect *val_pf, double &erreur_couverture, PnlVect *price) {
 
