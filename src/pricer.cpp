@@ -51,7 +51,7 @@ int main(int argc, char** argv)
 			cout << "erreur P&L : " << err << endl;
 		}
 	}
-	
+
 	// cas sans precision
 	else if (argc == 2)
 	{
@@ -71,14 +71,6 @@ int main(int argc, char** argv)
 			cout << "prix en 0 : " << prix << endl;
 			cout << "largeur de l'intervalle de confiance en 0 pour le prix : "
 				<< ic << endl;
-
-			PnlMat * past = pnl_mat_create(1, sim->monte_carlo->mod_->size_);
-			pnl_mat_set_row(past, sim->monte_carlo->mod_->spot_, 0);
-			PnlVect *delta = pnl_vect_create(sim->monte_carlo->mod_->size_);
-
-			sim->monte_carlo->delta(past, 0, delta);
-			cout << "delta en 0 : " << endl;
-			pnl_vect_print(delta);
 
 			t = clock() - t;
 			cout << "Temps d'exécution du programme : " <<
@@ -108,14 +100,7 @@ int main(int argc, char** argv)
 			cout << "prix en 0 : " << prix << endl;
 			cout << "largeur de l'intervalle de confiance en 0 pour le prix : "
 				<< ic << endl;
-
-			PnlMat * past = pnl_mat_create(1, sim->monte_carlo->mod_->size_);
-			pnl_mat_set_row(past, sim->monte_carlo->mod_->spot_, 0);
-			PnlVect *delta = pnl_vect_create(sim->monte_carlo->mod_->size_);
-
-			sim->monte_carlo->delta(past, 0, delta);
-			cout << "delta en 0 : " << endl;
-			pnl_vect_print(delta);
+			cout << "nombre de tirages requis : " << sim->monte_carlo->nbSamples_ << endl;
 
 			t = clock() - t;
 			cout << "Temps d'exécution du programme : " <<

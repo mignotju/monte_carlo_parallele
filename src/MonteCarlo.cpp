@@ -76,19 +76,9 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 				pnl_rng_sseed(my_rng, seed);
 
 				/*Getting pack size*/
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
+				MPI_Pack_size(6, MPI_INT, MPI_COMM_WORLD, &count);
 				bufsize += count;
 				MPI_Pack_size(1, MPI_DOUBLE, MPI_COMM_WORLD, &count);
-				bufsize += count;
-				MPI_Pack_size(1, MPI_INT, MPI_COMM_WORLD, &count);
 				bufsize += count;
 				MPI_Pack_size(my_rng->size_state, MPI_BYTE, MPI_COMM_WORLD, &count);
 				bufsize += count;
@@ -172,70 +162,6 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
 }
 
-/* Méthode sans pack/unpack, où chaque thread créé son générateur avec un id différent,
-* donc les générateurs sont indépendants
-* plus rapide a priori
-*/
-// MonteCarlo::MonteCarlo(Param *P, bool parallel)
-// {
-// 	mod_ = new BlackScholesModel(P);
-// 	P->extract("fd step", fdStep_);
-//
-// 	//Option
-// 	double maturity = 0;
-// 	int nbTimeSteps = 0;
-// 	double strike = 0;
-// 	string type = "";
-// 	P->extract("maturity", maturity);
-// 	P->extract("TimeStep Number", nbTimeSteps);
-// 	P->extract("strike", strike);
-// 	P->extract("option type", type);
-// 	PnlVect* lambda = pnl_vect_create(mod_->size_);
-// 	P->extract("payoff coefficients", lambda, mod_->size_);
-//
-// 	P->extract("Sample Number", nbSamples_);
-//
-// 	if (type.compare("asian") == 0)
-// 	{
-// 		opt_ = new OptionAsiatique(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-// 	}
-// 	else if (type.compare("basket") == 0)
-// 	{
-// 		opt_ = new OptionBasket(maturity, nbTimeSteps, mod_->size_, strike, lambda);
-// 	}
-// 	else if (type.compare("performance") == 0)
-// 	{
-// 		opt_ = new OptionPerformance(maturity, nbTimeSteps, mod_->size_, lambda);
-// 	}
-//
-// 	if (parallel)
-// 	{
-// 		int rank,size;
-// 		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-// 		MPI_Comm_size(MPI_COMM_WORLD, &size);
-// 		int seed = time(NULL);
-//
-// 		if (0 == rank)
-// 		{
-// 			rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-// 			pnl_rng_sseed(rng_, time(NULL));
-// 		}
-// 		else
-// 		{
-// 			rng_ = pnl_rng_dcmt_create_id(rank, seed);
-// 			pnl_rng_sseed(rng_, seed);
-// 		}
-// 	}
-// 	else
-// 	{
-// 		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
-// 		pnl_rng_sseed(rng_, time(NULL));
-// 	}
-//
-// 	shiftPlus_ = pnl_mat_new();
-// 	shiftMoins_ = pnl_mat_new();
-// 	path_ = pnl_mat_create_from_zero(this->opt_->nbTimeSteps_ + 1, this->mod_->size_);
-// }
 
 
 void MonteCarlo::price(double &prix, double &ic)
