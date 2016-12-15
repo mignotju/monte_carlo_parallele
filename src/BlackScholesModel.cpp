@@ -1,5 +1,5 @@
 #include "BlackScholesModel.hpp"
-#include <math.h> 
+#include <math.h>
 #include <iostream>
 #include "parser.hpp"
 
@@ -18,7 +18,7 @@ BlackScholesModel::BlackScholesModel() {
     mat_cholesky = pnl_mat_create_from_scalar(size_, size_, rho_);
     pnl_mat_set_diag(mat_cholesky, 1, 0);
     pnl_mat_chol(mat_cholesky);
-    
+
     clone_past_ = pnl_mat_new();
     subBlock_ = pnl_mat_new();
 
@@ -38,7 +38,7 @@ BlackScholesModel::BlackScholesModel(Param *P) {
     mat_cholesky = pnl_mat_create_from_scalar(size_, size_, rho_);
     pnl_mat_set_diag(mat_cholesky, 1, 0);
     pnl_mat_chol(mat_cholesky);
-    
+
     clone_past_ = pnl_mat_new();
     subBlock_ = pnl_mat_new();
 }
@@ -195,133 +195,7 @@ void BlackScholesModel::simul_market(PnlMat *path, double T, int H, PnlRng *rng)
     pnl_vect_free(&mat_chol_row);
 }
 
-/*  -----------  Fonctions déterministes pour les tests -------------------   */
 
-void BlackScholesModel::asset(PnlMat* path, double T, int nbTimeSteps, PnlVect* G) {
-
-    PnlVect *cours_date = pnl_vect_new();
-    pnl_vect_clone(cours_date, spot_);
-
-    PnlVect *mat_chol_row = pnl_vect_new();
-
-    for (int date = 0; date < nbTimeSteps + 1; date++) {
-        if (date == 0) {
-            pnl_mat_set_row(path, cours_date, date);
-        } else {
-            for (int i = 0; i < size_; i++) {
-                pnl_mat_get_row(mat_chol_row, mat_cholesky, i);
-                pnl_vect_set(cours_date, i, pnl_vect_get(cours_date, i) *
-                        exp((r_ - pow(pnl_vect_get(sigma_, i), 2) / 2)*(T / nbTimeSteps) +
-                        pnl_vect_get(sigma_, i) * sqrt(T / nbTimeSteps) *
-                        pnl_vect_scalar_prod(mat_chol_row, G)));
-
-            }
-            pnl_mat_set_row(path, cours_date, date);
-        }
-
-    }
-
-}
-
-void BlackScholesModel::asset(PnlMat *path, double t, double T, int nbTimeSteps,
-        PnlVect *G, const PnlMat *past) {
-
-    //longueur d'un pas
-    cout << T << endl;
-    cout << nbTimeSteps;
-    double step = T / nbTimeSteps;
-    pnl_mat_set_all(path, 0);
-
-    PnlMat * clone_past = pnl_mat_new();
-    pnl_mat_clone(clone_past, past);
-
-
-    if (fmod(t, T / nbTimeSteps) != 0) {
-        pnl_mat_del_row(clone_past, clone_past->m - 1);
-    }
-
-    pnl_mat_set_subblock(path, clone_past, 0, 0);
-
-
-    PnlVect *last_row = pnl_vect_create(past->n);
-    pnl_mat_get_row(last_row, past, (past->m) - 1);
-
-    PnlVect *cours_date = pnl_vect_new();
-    pnl_vect_clone(cours_date, last_row);
-
-
-    PnlVect *mat_chol_row = pnl_vect_new();
-    for (int date = clone_past->m; date < nbTimeSteps + 1; date++) {
-
-        if (date == clone_past->m && fmod(t, step) != 0) {
-
-            for (int i = 0; i < size_; i++) {
-
-                pnl_mat_get_row(mat_chol_row, mat_cholesky, i);
-
-                pnl_vect_set(cours_date, i, pnl_vect_get(cours_date, i) *
-                        exp((r_ - pow(pnl_vect_get(sigma_, i), 2) / 2)*((past->m - 1) * step - t) +
-                        pnl_vect_get(sigma_, i) * sqrt((past->m - 1) * step - t) *
-                        pnl_vect_scalar_prod(mat_chol_row, G)));
-
-            }
-        } else {
-
-            for (int i = 0; i < size_; i++) {
-
-                pnl_mat_get_row(mat_chol_row, mat_cholesky, i);
-
-                pnl_vect_set(cours_date, i, pnl_vect_get(cours_date, i) *
-                        exp((r_ - pow(pnl_vect_get(sigma_, i), 2) / 2)*(step) +
-                        pnl_vect_get(sigma_, i) * sqrt(step) *
-                        pnl_vect_scalar_prod(mat_chol_row, G)));
-
-            }
-        }
-
-
-        pnl_mat_set_row(path, cours_date, date);
-
-    }
-
-
-    pnl_mat_free(&clone_past);
-    pnl_vect_free(&last_row);
-    pnl_vect_free(&cours_date);
-
-}
-
-void BlackScholesModel::simul_market(PnlMat *path, double T, int H, PnlVect *G) {
-
-    PnlVect *cours_date = pnl_vect_new();
-    pnl_vect_clone(cours_date, spot_);
-
-    PnlVect *mat_chol_row = pnl_vect_new();
-
-    for (int date = 0; date < H + 1; date++) {
-
-        if (date != 0) {
-
-            for (int i = 0; i < size_; i++) {
-
-                pnl_mat_get_row(mat_chol_row, mat_cholesky, i);
-
-                //Formule de récurrence avec trend pour la proba historique
-                pnl_vect_set(cours_date, i, pnl_vect_get(cours_date, i) *
-                        exp((pnl_vect_get(trend, i) - pow(pnl_vect_get(sigma_, i), 2) / 2)*(T / H) +
-                        pnl_vect_get(sigma_, i) * sqrt(T / H) *
-                        pnl_vect_scalar_prod(mat_chol_row, G)));
-            }
-        }
-
-        pnl_mat_set_row(path, cours_date, date);
-    }
-
-    //libération de la mémoire
-    pnl_vect_free(&cours_date);
-    pnl_vect_free(&mat_chol_row);
-
-}
 
 BlackScholesModel::~BlackScholesModel() {
     pnl_vect_free(&sigma_);

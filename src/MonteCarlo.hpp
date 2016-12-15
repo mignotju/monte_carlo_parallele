@@ -5,6 +5,8 @@
 #include "pnl/pnl_random.h"
 #include "parser.hpp"
 
+#define STEP_PRECISION 1000
+
 /*!
  * \file MonteCarlo.hpp
  * \brief Simulation de Monte-Carlo
@@ -56,11 +58,16 @@ public:
 	 */
 	void price_slave();
 
+  /**
+  * Pour l'option avec précision
+  */
+
   void price(double &prix, double &ic, double precision);
 
   void price_master_precision(double &prix, double &ic, double precision);
 
   void price_slave_precision();
+
 
 
     /**

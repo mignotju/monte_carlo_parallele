@@ -58,6 +58,7 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 		MPI_Comm_size(MPI_COMM_WORLD, &size);
 		int seed = time(NULL);
 
+		// si on est le master
 		if (0 == rank)
 		{
 			int count;
@@ -120,6 +121,8 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 			rng_ = array_rng[0];
 			pnl_rng_sseed(rng_, seed);
 		}
+
+		// je suis un esclave
 		else
 		{
 			int bufsize;
@@ -157,6 +160,7 @@ MonteCarlo::MonteCarlo(Param *P, bool parallel)
 			delete(buf);
 		}
 	}
+	// non parallele
 	else
 	{
 		rng_ = pnl_rng_create(PNL_RNG_MERSENNE);
@@ -310,6 +314,9 @@ void MonteCarlo::price_slave()
 	MPI_Send(res, 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
 }
 
+
+/* Pour la précision */
+
 void MonteCarlo::price(double &prix, double &ic, double precision)
 {
 	int rank;
@@ -339,7 +346,7 @@ void MonteCarlo::price_master_precision(double &prix, double &ic, double precisi
 	double res[2];
 
 	 while (precision_reached != 1) {
-		 nbSamples_ += 1000;
+		 nbSamples_ += STEP_PRECISION;
 		for (int i = 0; i < slaves; i++)
 		{
 			MPI_Recv(res, 2, MPI_DOUBLE, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, NULL);
@@ -371,10 +378,10 @@ void MonteCarlo::price_slave_precision()
 
 	//on calcule le nombre de samples par slave
 	int slaves = size - 1;
-	int samples = 1000/slaves;
+	int samples = STEP_PRECISION/slaves;
 	if (slaves == rank)
 	{
-		samples += (1000%slaves);
+		samples += (STEP_PRECISION%slaves);
 	}
 
 	while (precision_reached != 1) {
@@ -403,6 +410,8 @@ void MonteCarlo::price_slave_precision()
 }
 
 
+// Cas non parallele
+
 void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic)
 {
 	double sum = 0;
@@ -417,7 +426,7 @@ void MonteCarlo::price(const PnlMat *past, double t, double &prix, double &ic)
 		mod_->asset(path, t, opt_->T_, opt_->nbTimeSteps_, rng_, past);
 		payoff = opt_->payoff(path);
 		sum += payoff;
-		sum_square += pow(payoff, 2);
+		sum_square += payoff*payoff;
 	}
 
 	pnl_mat_free(&path);

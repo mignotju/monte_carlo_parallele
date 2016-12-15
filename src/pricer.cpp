@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 	t = clock();
 	const char* extension = "-c";
 
+	// cas avec l'extension -c
 	if ((argc == 3) && (strcmp(argv[1], extension) == 0))
 	{
 		if (0 == rank)
@@ -50,6 +51,8 @@ int main(int argc, char** argv)
 			cout << "erreur P&L : " << err << endl;
 		}
 	}
+	
+	// cas sans precision
 	else if (argc == 2)
 	{
 		char *infile = argv[1];
@@ -82,6 +85,8 @@ int main(int argc, char** argv)
 				((float)t)/CLOCKS_PER_SEC << " secondes." << endl;
 		}
 	}
+
+	// cas avec precision
 	else if (argc == 3)
 	{
 		char *infile = argv[1];
